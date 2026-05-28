@@ -119,6 +119,43 @@ def apply_migrations(conn: sqlite3.Connection):
         # Seed initial data (default settings and presets)
         seed_initial_data(conn)
 
+    # Migration 2: Replace Piper Lula preset with Edresson
+    # (pt_BR/lula/medium does not exist in the official rhasspy/piper-voices repo)
+    if current_version < 2:
+        try:
+            # Mark old 'Piper Voz Lula' preset as deprecated in metadata if it exists
+            cursor.execute(
+                """
+                UPDATE tts_presets
+                SET metadata_json = json_patch(
+                    COALESCE(metadata_json, '{}'),
+                    '{"deprecated": true, "deprecated_reason": "pt_BR-lula-medium nao existe no repositorio oficial do Piper. Use pt_br_edresson."}'
+                ), updated_at = ?
+                WHERE voice = 'pt_br_lula' OR voice = 'pt_BR-lula-medium'
+                """,
+                (datetime.now().isoformat(),)
+            )
+        except Exception:
+            pass  # json_patch may not be available in older SQLite; skip gracefully
+
+        # Add 'Piper Voz Edresson' if not already present (idempotent)
+        now_str = datetime.now().isoformat()
+        cursor.execute("""
+            INSERT OR IGNORE INTO tts_presets (
+                name, engine, voice, output_format, speed, preview_chars,
+                chunk_chars, language, metadata_json, is_default, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            "Piper Voz Edresson", "piper", "pt_br_edresson", "wav",
+            1.0, 300, 400, "pt-br", "{}", 0, now_str, now_str
+        ))
+
+        cursor.execute(
+            "INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)",
+            (2, datetime.now().isoformat())
+        )
+        conn.commit()
+
 def seed_initial_data(conn: sqlite3.Connection):
     """Seed initial app settings and defaults."""
     cursor = conn.cursor()
@@ -135,12 +172,12 @@ def seed_initial_data(conn: sqlite3.Connection):
             (key, val, now_str)
         )
         
-    # Default TTS presets
+    # Default TTS presets (INSERT OR IGNORE = idempotent, never duplicate)
     default_presets = [
-        ("Narradora Kokoro Dora (Padrao)", "kokoro", "pt_br_dora", "wav", 1.0, 300, 400, "pt-br", "{}", 1),
-        ("Narrador Kokoro Alex", "kokoro", "pt_br_alex", "wav", 1.0, 300, 400, "pt-br", "{}", 0),
-        ("Piper Voz Lula", "piper", "pt_br_lula", "wav", 1.0, 300, 400, "pt-br", "{}", 0),
-        ("Piper Voz Faber (Narrador)", "piper", "pt_br_faber", "wav", 1.0, 300, 400, "pt-br", "{}", 0)
+        ("Narradora Kokoro Dora (Padrao)", "kokoro", "pt_br_dora",     "wav", 1.0, 300, 400, "pt-br", "{}", 1),
+        ("Narrador Kokoro Alex",           "kokoro", "pt_br_alex",     "wav", 1.0, 300, 400, "pt-br", "{}", 0),
+        ("Piper Voz Edresson",             "piper",  "pt_br_edresson", "wav", 1.0, 300, 400, "pt-br", "{}", 0),
+        ("Piper Voz Faber (Narrador)",     "piper",  "pt_br_faber",    "wav", 1.0, 300, 400, "pt-br", "{}", 0),
     ]
     for name, engine, voice, fmt, speed, preview, chunk, lang, meta, is_def in default_presets:
         cursor.execute("""

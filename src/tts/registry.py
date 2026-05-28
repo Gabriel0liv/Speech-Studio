@@ -74,17 +74,6 @@ VOICE_MAPPING = {
         }
     },
     "piper": {
-        "pt_br_lula": {
-            "engine": "piper",
-            "alias": "pt_br_lula",
-            "id": "pt_BR-lula-medium",
-            "name": "Lula (Masculino - PT-BR)",
-            "lang": "pt-br",
-            "gender": "Masculino",
-            "style": "Discurso / Politico",
-            "source": "downloadable",
-            "license_note": "Licenca CC-BY-NC-SA. Verifique a licenca do modelo antes do uso comercial."
-        },
         "pt_br_faber": {
             "engine": "piper",
             "alias": "pt_br_faber",
@@ -93,6 +82,61 @@ VOICE_MAPPING = {
             "lang": "pt-br",
             "gender": "Masculino",
             "style": "Narrativo",
+            "source": "downloadable",
+            "license_note": "Licenca CC-BY-NC-SA. Verifique a licenca do modelo antes do uso comercial."
+        },
+        "faber": {
+            "engine": "piper",
+            "alias": "faber",
+            "id": "pt_BR-faber-medium",
+            "name": "Faber (Masculino - PT-BR)",
+            "lang": "pt-br",
+            "gender": "Masculino",
+            "style": "Narrativo",
+            "source": "downloadable",
+            "license_note": "Licenca CC-BY-NC-SA. Verifique a licenca do modelo antes do uso comercial."
+        },
+        "piper_faber": {
+            "engine": "piper",
+            "alias": "piper_faber",
+            "id": "pt_BR-faber-medium",
+            "name": "Faber (Masculino - PT-BR)",
+            "lang": "pt-br",
+            "gender": "Masculino",
+            "style": "Narrativo",
+            "source": "downloadable",
+            "license_note": "Licenca CC-BY-NC-SA. Verifique a licenca do modelo antes do uso comercial."
+        },
+        "pt_br_edresson": {
+            "engine": "piper",
+            "alias": "pt_br_edresson",
+            "id": "pt_BR-edresson-low",
+            "name": "Edresson (Masculino - PT-BR)",
+            "lang": "pt-br",
+            "gender": "Masculino",
+            "style": "Natural / Conversacional",
+            "source": "downloadable",
+            "license_note": "Licenca CC-BY-NC-SA. Verifique a licenca do modelo antes do uso comercial."
+        },
+        "edresson": {
+            "engine": "piper",
+            "alias": "edresson",
+            "id": "pt_BR-edresson-low",
+            "name": "Edresson (Masculino - PT-BR)",
+            "lang": "pt-br",
+            "gender": "Masculino",
+            "style": "Natural / Conversacional",
+            "source": "downloadable",
+            "license_note": "Licenca CC-BY-NC-SA. Verifique a licenca do modelo antes do uso comercial."
+        },
+        "piper_edresson": {
+            "engine": "piper",
+            "alias": "piper_edresson",
+            "id": "pt_BR-edresson-low",
+            "name": "Edresson (Masculino - PT-BR)",
+            "lang": "pt-br",
+            "gender": "Masculino",
+            "style": "Natural / Conversacional",
             "source": "downloadable",
             "license_note": "Licenca CC-BY-NC-SA. Verifique a licenca do modelo antes do uso comercial."
         }
