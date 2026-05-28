@@ -1,8 +1,62 @@
 import json
 import sqlite3
+import unicodedata
 from datetime import datetime
 from typing import List, Dict, Any, Optional, Union
 from src.core.database import get_connection
+
+# =====================================================================
+# Preset Alias Resolution
+# =====================================================================
+# Maps short/friendly aliases -> canonical preset names stored in the DB.
+# Lookup is case-insensitive and accent-insensitive.
+_PRESET_ALIASES: Dict[str, str] = {
+    # Kokoro PT-BR
+    "dora":              "Narradora Kokoro Dora (Padrao)",
+    "kokoro dora":       "Narradora Kokoro Dora (Padrao)",
+    "kokoro_dora":       "Narradora Kokoro Dora (Padrao)",
+    "kokoro-dora":       "Narradora Kokoro Dora (Padrao)",
+    "alex":              "Narrador Kokoro Alex",
+    "kokoro alex":       "Narrador Kokoro Alex",
+    "kokoro_alex":       "Narrador Kokoro Alex",
+    "kokoro-alex":       "Narrador Kokoro Alex",
+    "santa":             "Narrador Kokoro Santa",
+    "kokoro santa":      "Narrador Kokoro Santa",
+    "kokoro_santa":      "Narrador Kokoro Santa",
+    "kokoro-santa":      "Narrador Kokoro Santa",
+    # Piper PT-BR
+    "faber":             "Piper Voz Faber (Narrador)",
+    "piper faber":       "Piper Voz Faber (Narrador)",
+    "piper_faber":       "Piper Voz Faber (Narrador)",
+    "piper-faber":       "Piper Voz Faber (Narrador)",
+    "edresson":          "Piper Voz Edresson",
+    "piper edresson":    "Piper Voz Edresson",
+    "piper_edresson":    "Piper Voz Edresson",
+    "piper-edresson":    "Piper Voz Edresson",
+}
+
+def _normalize_alias(s: str) -> str:
+    """Lowercase + strip accents for comparison."""
+    nfkd = unicodedata.normalize("NFKD", s)
+    return "".join(c for c in nfkd if not unicodedata.combining(c)).lower().strip()
+
+def resolve_preset_alias(name_or_id: Union[int, str]) -> Union[int, str]:
+    """
+    Resolve a short preset alias to the canonical DB name.
+    Falls back to name_or_id unchanged if no alias matches.
+    """
+    if isinstance(name_or_id, int):
+        return name_or_id
+    normalized = _normalize_alias(str(name_or_id))
+    # Direct alias table lookup
+    if normalized in _PRESET_ALIASES:
+        return _PRESET_ALIASES[normalized]
+    # Also try without accent normalization
+    for alias_key, canonical in _PRESET_ALIASES.items():
+        if _normalize_alias(alias_key) == normalized:
+            return canonical
+    return name_or_id
+
 
 # =====================================================================
 # App Settings Persistence APIs
@@ -174,15 +228,18 @@ def list_tts_presets() -> List[Dict[str, Any]]:
         return []
 
 def get_tts_preset(name_or_id: Union[int, str]) -> Optional[Dict[str, Any]]:
-    """Retrieve a single preset by ID or UNIQUE name."""
+    """Retrieve a single preset by ID, exact name, or registered alias."""
     try:
-        if isinstance(name_or_id, int) or (isinstance(name_or_id, str) and name_or_id.isdigit()):
+        # Resolve alias first (e.g. "Dora" -> "Narradora Kokoro Dora (Padrao)")
+        resolved = resolve_preset_alias(name_or_id)
+
+        if isinstance(resolved, int) or (isinstance(resolved, str) and resolved.isdigit()):
             condition = "WHERE id = ?"
-            param = int(name_or_id)
+            param = int(resolved)
         else:
             condition = "WHERE name = ?"
-            param = name_or_id
-            
+            param = resolved
+
         with get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute(f"SELECT * FROM tts_presets {condition}", (param,))
@@ -191,6 +248,7 @@ def get_tts_preset(name_or_id: Union[int, str]) -> Optional[Dict[str, Any]]:
     except Exception as e:
         print(f"[WARN] Nao foi possivel obter preset '{name_or_id}': {e}")
         return None
+
 
 def set_default_tts_preset(preset_id_or_name: Union[int, str]) -> None:
     """Set the specified preset as default."""

@@ -320,7 +320,8 @@ def transcribe_audio_ui(file_obj, model, language, device, compute_type, batch_s
 
     yield log_accumulator, output_files_info
 
-def generate_tts_ui(text, upload_file, engine, voice, format, preview, preview_chars, device, speed=1.0):
+def generate_tts_ui(text, upload_file, engine, voice, format, preview, preview_chars, device, speed=1.0,
+                    analyze_ptbr=False, normalize_ptbr=False):
     """
     Invokes synthesize.py in a subprocess to run the synthesis.
     This guarantees CLI alignment and prevents memory issues.
@@ -338,7 +339,22 @@ def generate_tts_ui(text, upload_file, engine, voice, format, preview, preview_c
 
     input_text = input_text.strip()
     if not input_text:
-        return None, "Erro: Escreva algum texto ou faca o upload de um arquivo .txt."
+        return None, "Erro: Escreva algum texto ou faca o upload de um arquivo .txt.", ""
+
+    # PT-BR analysis (run in-process for speed, before synthesis)
+    analysis_md = ""
+    if analyze_ptbr:
+        try:
+            from src.tts.ptbr_text import analyze_ptbr_text
+            analysis = analyze_ptbr_text(input_text)
+            if analysis["has_issues"]:
+                analysis_md = "**⚠️ Analise PT-BR — problemas encontrados:**\n\n" + "\n\n".join(
+                    f"- {w}" for w in analysis["warnings"]
+                )
+            else:
+                analysis_md = "✅ Analise PT-BR: nenhum problema detectado."
+        except Exception as e:
+            analysis_md = f"(Erro na analise PT-BR: {e})"
 
     # In preview mode, slice the string
     if preview:
@@ -352,7 +368,7 @@ def generate_tts_ui(text, upload_file, engine, voice, format, preview, preview_c
     # Write text input to a temporary .txt file to support long text safely
     os.makedirs(TEMP_DIR, exist_ok=True)
     temp_txt = os.path.join(TEMP_DIR, f"tts_input_{int(time.time())}_{os.getpid()}.txt")
-    
+
     try:
         with open(temp_txt, "w", encoding="utf-8") as f:
             f.write(input_text)
@@ -369,6 +385,9 @@ def generate_tts_ui(text, upload_file, engine, voice, format, preview, preview_c
             "--speed", str(speed)
         ]
 
+        if normalize_ptbr:
+            cmd.append("--normalize-ptbr")
+
         # Spawn process
         process = subprocess.Popen(
             cmd,
@@ -378,7 +397,7 @@ def generate_tts_ui(text, upload_file, engine, voice, format, preview, preview_c
             bufsize=1,
             universal_newlines=True
         )
-        
+
         log = f"Comando executado:\n{' '.join(cmd)}\n\n"
         while True:
             line = process.stdout.readline()
@@ -386,16 +405,16 @@ def generate_tts_ui(text, upload_file, engine, voice, format, preview, preview_c
                 break
             if line:
                 log += line
-                
+
         rc = process.poll()
         if rc != 0:
-            return None, f"Erro na sintese de audio (codigo {rc}):\n{log}"
-            
+            return None, f"Erro na sintese de audio (codigo {rc}):\n{log}", analysis_md
+
         if os.path.exists(output_file):
-            return output_file, f"Audio sintetizado com sucesso!\nSalvo em: {os.path.abspath(output_file)}\n\nLog do processo:\n{log}"
+            return output_file, f"Audio sintetizado com sucesso!\nSalvo em: {os.path.abspath(output_file)}\n\nLog do processo:\n{log}", analysis_md
         else:
-            return None, f"Erro: O processo terminou com sucesso, mas o arquivo de audio nao foi localizado.\nLog:\n{log}"
-            
+            return None, f"Erro: O processo terminou com sucesso, mas o arquivo de audio nao foi localizado.\nLog:\n{log}", analysis_md
+
     finally:
         # Clean up temporary file
         if os.path.exists(temp_txt):
@@ -405,6 +424,50 @@ def generate_tts_ui(text, upload_file, engine, voice, format, preview, preview_c
                     os.remove(temp_txt)
                 except Exception:
                     pass
+
+
+def run_compare_voices_ui():
+    """Launches compare-voices mode via subprocess and returns status text."""
+    import time
+    output_dir = os.path.join("outputs", "speech", "voice_compare")
+    os.makedirs(output_dir, exist_ok=True)
+    cmd = [
+        sys.executable, "synthesize.py",
+        "--compare-voices",
+        "--output-dir", output_dir,
+    ]
+    try:
+        process = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            universal_newlines=True
+        )
+        log = ""
+        while True:
+            line = process.stdout.readline()
+            if not line and process.poll() is not None:
+                break
+            if line:
+                log += line
+        rc = process.poll()
+        abs_dir = os.path.abspath(output_dir)
+        report_json = os.path.join(abs_dir, "compare_report.json")
+        report_md = os.path.join(abs_dir, "compare_report.md")
+        if rc == 0:
+            result = f"✅ Comparativo concluido!\n\nPasta: {abs_dir}\n"
+            if os.path.exists(report_md):
+                result += f"Relatorio MD:   {report_md}\n"
+            if os.path.exists(report_json):
+                result += f"Relatorio JSON: {report_json}\n"
+            result += f"\nLog:\n{log}"
+        else:
+            result = f"⚠️ Comparativo terminou com codigo {rc}.\nAlgumas vozes podem ter falhado.\n\nPasta: {abs_dir}\nLog:\n{log}"
+        return result
+    except Exception as e:
+        return f"Erro ao executar comparativo: {e}"
+
 
 def update_voice_info(engine, voice) -> str:
     """
@@ -864,6 +927,17 @@ def build_app():
                             )
                         
                         with gr.Row():
+                            analyze_ptbr_cb = gr.Checkbox(
+                                label="Analisar texto PT-BR (detectar acentos ausentes)",
+                                value=False
+                            )
+                            normalize_ptbr_cb = gr.Checkbox(
+                                label="Aplicar normalizacao PT-BR simples (corrigir acentos basicos)",
+                                value=False
+                            )
+                        ptbr_analysis_md = gr.Markdown("", label="Resultado da Analise PT-BR")
+
+                        with gr.Row():
                             preview_btn = gr.Button("Gerar Previa (Rápido)", variant="secondary")
                             full_btn = gr.Button("Gerar Audio Completo", variant="primary")
                             
@@ -897,19 +971,19 @@ def build_app():
                 )
                 
                 preview_btn.click(
-                    fn=lambda text, f, eng, vc, fmt, dev, chars, speed: generate_tts_ui(
-                        text, f, eng, vc, fmt, True, chars, dev, speed
+                    fn=lambda text, f, eng, vc, fmt, dev, chars, speed, anlz, norm: generate_tts_ui(
+                        text, f, eng, vc, fmt, True, chars, dev, speed, anlz, norm
                     ),
-                    inputs=[text_input, file_upload, engine_dropdown, voice_dropdown, format_dropdown, device_tts_dropdown, preview_chars_slider, speed_slider],
-                    outputs=[audio_output, status_output]
+                    inputs=[text_input, file_upload, engine_dropdown, voice_dropdown, format_dropdown, device_tts_dropdown, preview_chars_slider, speed_slider, analyze_ptbr_cb, normalize_ptbr_cb],
+                    outputs=[audio_output, status_output, ptbr_analysis_md]
                 )
-                
+
                 full_btn.click(
-                    fn=lambda text, f, eng, vc, fmt, dev, chars, speed: generate_tts_ui(
-                        text, f, eng, vc, fmt, False, chars, dev, speed
+                    fn=lambda text, f, eng, vc, fmt, dev, chars, speed, anlz, norm: generate_tts_ui(
+                        text, f, eng, vc, fmt, False, chars, dev, speed, anlz, norm
                     ),
-                    inputs=[text_input, file_upload, engine_dropdown, voice_dropdown, format_dropdown, device_tts_dropdown, preview_chars_slider, speed_slider],
-                    outputs=[audio_output, status_output]
+                    inputs=[text_input, file_upload, engine_dropdown, voice_dropdown, format_dropdown, device_tts_dropdown, preview_chars_slider, speed_slider, analyze_ptbr_cb, normalize_ptbr_cb],
+                    outputs=[audio_output, status_output, ptbr_analysis_md]
                 )
 
             # Tab 3: Historico
@@ -1001,14 +1075,33 @@ def build_app():
                 status_html = gr.HTML(value=get_system_status_html())
                 voices_status_html = gr.HTML(value=get_voices_status_html())
                 refresh_btn = gr.Button("Atualizar Status", variant="secondary")
-                
+
+                gr.Markdown("---")
+                gr.Markdown(
+                    "### 🇧🇷 Comparativo de Vozes PT-BR\n"
+                    "Gera um arquivo WAV com cada voz PT-BR registrada usando a mesma frase padrao. "
+                    "As vozes que falharem serao listadas no relatorio sem interromper as demais."
+                )
+                compare_btn = gr.Button("🎙️ Gerar Comparativo PT-BR", variant="primary")
+                compare_output = gr.Textbox(
+                    label="Resultado do Comparativo",
+                    lines=12,
+                    interactive=False
+                )
+
                 def refresh_all_status():
                     return get_system_status_html(), get_voices_status_html()
-                
+
                 refresh_btn.click(
                     fn=refresh_all_status,
                     inputs=[],
                     outputs=[status_html, voices_status_html]
+                )
+
+                compare_btn.click(
+                    fn=run_compare_voices_ui,
+                    inputs=[],
+                    outputs=[compare_output]
                 )
 
             # Tab 6: Settings

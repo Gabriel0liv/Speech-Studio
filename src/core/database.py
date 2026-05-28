@@ -156,6 +156,24 @@ def apply_migrations(conn: sqlite3.Connection):
         )
         conn.commit()
 
+    # Migration 3: Add Kokoro Santa preset
+    if current_version < 3:
+        now_str = datetime.now().isoformat()
+        cursor.execute("""
+            INSERT OR IGNORE INTO tts_presets (
+                name, engine, voice, output_format, speed, preview_chars,
+                chunk_chars, language, metadata_json, is_default, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            "Narrador Kokoro Santa", "kokoro", "pt_br_santa", "wav",
+            1.0, 300, 400, "pt-br", "{}", 0, now_str, now_str
+        ))
+        cursor.execute(
+            "INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)",
+            (3, datetime.now().isoformat())
+        )
+        conn.commit()
+
 def seed_initial_data(conn: sqlite3.Connection):
     """Seed initial app settings and defaults."""
     cursor = conn.cursor()
@@ -176,6 +194,7 @@ def seed_initial_data(conn: sqlite3.Connection):
     default_presets = [
         ("Narradora Kokoro Dora (Padrao)", "kokoro", "pt_br_dora",     "wav", 1.0, 300, 400, "pt-br", "{}", 1),
         ("Narrador Kokoro Alex",           "kokoro", "pt_br_alex",     "wav", 1.0, 300, 400, "pt-br", "{}", 0),
+        ("Narrador Kokoro Santa",          "kokoro", "pt_br_santa",    "wav", 1.0, 300, 400, "pt-br", "{}", 0),
         ("Piper Voz Edresson",             "piper",  "pt_br_edresson", "wav", 1.0, 300, 400, "pt-br", "{}", 0),
         ("Piper Voz Faber (Narrador)",     "piper",  "pt_br_faber",    "wav", 1.0, 300, 400, "pt-br", "{}", 0),
     ]

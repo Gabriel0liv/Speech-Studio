@@ -94,8 +94,12 @@ class KokoroEngine(BaseTTSEngine):
             
             from kokoro import KPipeline
             try:
-                # Kokoro's pipeline uses PyTorch under the hood
-                self._pipeline = KPipeline(lang_code=lang_code, device=self.device)
+                # Pass repo_id explicitly to suppress the 'Defaulting repo_id' warning
+                self._pipeline = KPipeline(
+                    lang_code=lang_code,
+                    device=self.device,
+                    repo_id="hexgrad/Kokoro-82M"
+                )
                 self._current_lang_code = lang_code
             except Exception as e:
                 # Provide user-friendly diagnostics if espeak is missing

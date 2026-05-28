@@ -17,6 +17,28 @@ VOICE_MAPPING = {
             "source": "hf_cache",
             "license_note": "Licenca nao comercial do modelo Kokoro. Verifique os termos antes do uso comercial."
         },
+        "dora": {
+            "engine": "kokoro",
+            "alias": "dora",
+            "id": "pf_dora",
+            "name": "Dora (Feminino - PT-BR)",
+            "lang": "pt-br",
+            "gender": "Feminino",
+            "style": "Suave / Natural",
+            "source": "hf_cache",
+            "license_note": "Licenca nao comercial do modelo Kokoro. Verifique os termos antes do uso comercial."
+        },
+        "kokoro_dora": {
+            "engine": "kokoro",
+            "alias": "kokoro_dora",
+            "id": "pf_dora",
+            "name": "Dora (Feminino - PT-BR)",
+            "lang": "pt-br",
+            "gender": "Feminino",
+            "style": "Suave / Natural",
+            "source": "hf_cache",
+            "license_note": "Licenca nao comercial do modelo Kokoro. Verifique os termos antes do uso comercial."
+        },
         "pt_br_alex": {
             "engine": "kokoro",
             "alias": "pt_br_alex",
@@ -25,6 +47,61 @@ VOICE_MAPPING = {
             "lang": "pt-br",
             "gender": "Masculino",
             "style": "Natural",
+            "source": "hf_cache",
+            "license_note": "Licenca nao comercial do modelo Kokoro. Verifique os termos antes do uso comercial."
+        },
+        "alex": {
+            "engine": "kokoro",
+            "alias": "alex",
+            "id": "pm_alex",
+            "name": "Alex (Masculino - PT-BR)",
+            "lang": "pt-br",
+            "gender": "Masculino",
+            "style": "Natural",
+            "source": "hf_cache",
+            "license_note": "Licenca nao comercial do modelo Kokoro. Verifique os termos antes do uso comercial."
+        },
+        "kokoro_alex": {
+            "engine": "kokoro",
+            "alias": "kokoro_alex",
+            "id": "pm_alex",
+            "name": "Alex (Masculino - PT-BR)",
+            "lang": "pt-br",
+            "gender": "Masculino",
+            "style": "Natural",
+            "source": "hf_cache",
+            "license_note": "Licenca nao comercial do modelo Kokoro. Verifique os termos antes do uso comercial."
+        },
+        "pt_br_santa": {
+            "engine": "kokoro",
+            "alias": "pt_br_santa",
+            "id": "pm_santa",
+            "name": "Santa (Masculino - PT-BR)",
+            "lang": "pt-br",
+            "gender": "Masculino",
+            "style": "Grave / Narrativo",
+            "source": "hf_cache",
+            "license_note": "Licenca nao comercial do modelo Kokoro. Verifique os termos antes do uso comercial."
+        },
+        "santa": {
+            "engine": "kokoro",
+            "alias": "santa",
+            "id": "pm_santa",
+            "name": "Santa (Masculino - PT-BR)",
+            "lang": "pt-br",
+            "gender": "Masculino",
+            "style": "Grave / Narrativo",
+            "source": "hf_cache",
+            "license_note": "Licenca nao comercial do modelo Kokoro. Verifique os termos antes do uso comercial."
+        },
+        "kokoro_santa": {
+            "engine": "kokoro",
+            "alias": "kokoro_santa",
+            "id": "pm_santa",
+            "name": "Santa (Masculino - PT-BR)",
+            "lang": "pt-br",
+            "gender": "Masculino",
+            "style": "Grave / Narrativo",
             "source": "hf_cache",
             "license_note": "Licenca nao comercial do modelo Kokoro. Verifique os termos antes do uso comercial."
         },
