@@ -1,0 +1,101 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 224 30% 6%;
+    --foreground: 210 40% 98%;
+
+    --card: 224 28% 9%;
+    --card-foreground: 210 40% 98%;
+
+    --popover: 224 30% 8%;
+    --popover-foreground: 210 40% 98%;
+
+    --primary: 190 95% 55%;
+    --primary-foreground: 224 30% 6%;
+
+    --secondary: 224 24% 14%;
+    --secondary-foreground: 210 40% 98%;
+
+    --muted: 224 22% 13%;
+    --muted-foreground: 220 12% 60%;
+
+    --accent: 265 85% 65%;
+    --accent-foreground: 210 40% 98%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 210 40% 98%;
+
+    --success: 145 70% 50%;
+    --success-foreground: 224 30% 6%;
+
+    --warning: 38 95% 58%;
+    --warning-foreground: 224 30% 6%;
+
+    --border: 224 22% 16%;
+    --input: 224 22% 14%;
+    --ring: 190 95% 55%;
+
+    --radius: 0.75rem;
+
+    --gradient-primary: linear-gradient(135deg, hsl(190 95% 55%) 0%, hsl(265 85% 65%) 100%);
+    --gradient-surface: linear-gradient(180deg, hsl(224 28% 11% / 0.8) 0%, hsl(224 28% 8% / 0.6) 100%);
+    --gradient-glow: radial-gradient(ellipse at top, hsl(190 95% 55% / 0.15) 0%, transparent 60%);
+    --shadow-glow: 0 0 40px hsl(190 95% 55% / 0.25);
+    --shadow-elegant: 0 10px 40px -10px hsl(224 50% 2% / 0.6);
+
+    --sidebar-background: 224 32% 5%;
+    --sidebar-foreground: 220 12% 70%;
+    --sidebar-primary: 190 95% 55%;
+    --sidebar-primary-foreground: 224 30% 6%;
+    --sidebar-accent: 224 24% 12%;
+    --sidebar-accent-foreground: 210 40% 98%;
+    --sidebar-border: 224 22% 12%;
+    --sidebar-ring: 190 95% 55%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    background-image:
+      radial-gradient(ellipse at top left, hsl(190 95% 55% / 0.08), transparent 50%),
+      radial-gradient(ellipse at bottom right, hsl(265 85% 65% / 0.08), transparent 50%);
+    background-attachment: fixed;
+  }
+}
+
+@layer components {
+  .glass-panel {
+    @apply bg-card/60 backdrop-blur-xl border border-border/60;
+  }
+
+  .glow-border {
+    box-shadow: 0 0 0 1px hsl(var(--primary) / 0.3), 0 0 30px hsl(var(--primary) / 0.15);
+  }
+
+  .text-gradient {
+    background: var(--gradient-primary);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  .waveform-bg {
+    background-image: repeating-linear-gradient(
+      90deg,
+      hsl(var(--primary) / 0.4) 0px,
+      hsl(var(--primary) / 0.4) 2px,
+      transparent 2px,
+      transparent 6px
+    );
+  }
+}

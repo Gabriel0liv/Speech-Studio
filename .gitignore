@@ -9,6 +9,7 @@ inputs/*
 outputs/
 outputs_tts/
 temp/
+temp/uploads/
 
 .hf_cache/
 huggingface_cache/
@@ -16,6 +17,10 @@ test_hf_cache/
 model_cache/
 tts_cache/
 voices/
+frontend/node_modules/
+frontend/dist/
+frontend/.env
+frontend/.env.local
 
 *.wav
 *.mp3
