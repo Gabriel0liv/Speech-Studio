@@ -1,0 +1,13 @@
+.venv/
+.env
+temp/
+outputs/
+inputs/*
+!inputs/.gitkeep
+__pycache__/
+*.wav
+*.mp3
+*.mp4
+*.mkv
+*.mov
+test_hf_cache

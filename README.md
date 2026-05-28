@@ -1,0 +1,262 @@
+# Pipeline Local de Transcrição e Diarização de Voz (Audio-to-Text)
+
+Este projeto implementa um pipeline completo em Python para transcrição de áudio e vídeo local, com identificação precisa de "quem falou quando" (Speaker Diarization). 
+
+O pipeline baseia-se em **modelos de IA locais** para garantir privacidade, velocidade e zero custos com APIs externas.
+
+---
+
+## 🛠️ Stack Tecnológica
+
+- **Python 3.10+**
+- **FFmpeg** (para extração, conversão e normalização de áudio/vídeo)
+- **WhisperX** (baseado no `faster-whisper` e CTranslate2 para transcrição acelerada com alinhamento de palavras)
+- **pyannote.audio** (para separação de vozes/diarização via Hugging Face)
+- **PyTorch + CUDA 12.6** (para aceleração por GPU de forma nativa)
+
+---
+
+## 📋 Pré-requisitos
+
+1. **Python 3.10.11** instalado no sistema.
+2. **FFmpeg** instalado e adicionado ao PATH do Windows.
+   - Para verificar se está pronto, abra um terminal e rode: `ffmpeg -version`
+3. **GPU NVIDIA (Recomendado):** O script foi otimizado para placas com pouca VRAM (como a RTX 3050 de 4GB), mas também possui fallback automático para execução em CPU.
+
+---
+
+## 🚀 Instalação e Configuração
+
+Fornecemos scripts do PowerShell para automatizar a criação do ambiente virtual (`.venv`) e instalação de todas as dependências complexas (incluindo o PyTorch com suporte a CUDA).
+
+### Opção A: Instalação com Aceleração por GPU (Recomendado)
+Abra o PowerShell na pasta do projeto e execute:
+```powershell
+powershell -ExecutionPolicy Bypass -File .\install_gpu.ps1
+```
+*Este script instalará o PyTorch 2.8.0 com CUDA 12.6, instalará as dependências do `requirements.txt`, compilará o WhisperX diretamente do GitHub e validará se a sua GPU foi reconhecida com sucesso.*
+
+### Opção B: Instalação para rodar apenas em CPU
+Se o seu computador não possuir placa de vídeo NVIDIA dedicada:
+```powershell
+powershell -ExecutionPolicy Bypass -File .\install_cpu.ps1
+```
+
+---
+
+## 🔑 Configuração do Hugging Face (Obrigatório para Diarização)
+
+Para identificar diferentes interlocutores (ex: `SPEAKER_00`, `SPEAKER_01`), o modelo Pyannote exige aceitação dos termos de licença e uso de um token de acesso.
+
+1. Crie uma conta ou faça login no [Hugging Face](https://huggingface.co/).
+2. Aceite as condições de uso dos seguintes modelos de IA (clique nos links e clique em **Accept** ou **Agree to share info**):
+   - [pyannote/speaker-diarization-community-1](https://huggingface.co/pyannote/speaker-diarization-community-1)
+   - [pyannote/speaker-diarization-3.1](https://huggingface.co/pyannote/speaker-diarization-3.1) (opcional, caso queira usar a versão 3.1 diretamente)
+   - [pyannote/segmentation-3.0](https://huggingface.co/pyannote/segmentation-3.0) (opcional, dependência direta de modelos pyannote)
+3. Crie um token de acesso **Read** em [hf.co/settings/tokens](https://huggingface.co/settings/tokens).
+4. Copie o arquivo `.env.example` para um novo arquivo chamado `.env` na raiz do projeto:
+   ```bash
+   cp .env.example .env
+   ```
+5. Insira o seu token copiado no `.env`:
+   ```env
+   HF_TOKEN=hf_seu_token_aqui
+   ```
+
+---
+
+## 💻 Como Utilizar
+
+### 🚀 Modo Fácil: Assistente de Console (Recomendado)
+
+Você não precisa decorar nenhum comando ou parâmetro complexo para rodar a transcrição. Fornecemos um assistente interativo em português para ajudá-lo de forma visual:
+
+1. **Abra o assistente (Duplo Clique):**
+   - Dê um duplo clique no arquivo **`transcrever.bat`** na pasta do projeto.
+   - Isso abrirá uma janela preta de terminal com um menu de opções numerado.
+2. **Escolha o modo de transcrição:**
+   - **Opção 1:** Modo Completo (Modelo Medium + CUDA + VAD Sensível) -> **Recomendado para uso geral** (entrevistas, podcasts, gameplays, vídeos). Evita falas cortadas e detecta a quantidade de vozes de forma automática.
+   - **Opção 2:** Modo Rápido (Modelo Small) -> Muito mais rápido para testes ou arquivos curtos.
+   - **Opção 3:** Apenas Texto -> Transcreve tudo em texto corrido sem separar as vozes (não necessita de Token do Hugging Face).
+   - **Opção 4:** Configuração Personalizada -> Permite escolher cada parâmetro (como modelo, idioma, etc.) com explicações simples passo a passo de cada um.
+3. **Arraste e solte o arquivo de áudio/vídeo:**
+   - Quando o console solicitar o arquivo, basta pegar o arquivo de áudio ou vídeo no seu computador, **arrastar e soltar diretamente dentro da janela preta** e apertar `Enter`.
+   - O pipeline começará a rodar sozinho com as configurações ideais.
+
+---
+
+### ⚡ Modo Super Rápido (Arrastar e Soltar no Ícone)
+
+Se você já quer transcrever um vídeo usando o modo recomendado (Modo Completo):
+1. No Windows Explorer, **arraste o arquivo de vídeo ou áudio diretamente para cima do ícone do arquivo `transcrever.bat`**.
+2. O terminal se abrirá sozinho e iniciará a transcrição imediata com todas as configurações recomendadas, sem fazer nenhuma pergunta.
+
+---
+
+### 🛠️ Modo Avançado (Linha de Comando)
+
+Sempre ative o ambiente virtual antes de executar o script manualmente no terminal:
+```powershell
+.venv\Scripts\Activate.ps1
+```
+
+### 1. Transcrição Básica (Sem Diarização/Vozes)
+Caso queira apenas transcrever rapidamente sem separar as vozes (não necessita de token do Hugging Face):
+```bash
+python transcribe.py inputs/video.mp4 --no-diarization
+```
+
+### 2. Transcrição Completa com Diarização (Vozes Separadas)
+Se o token estiver configurado no `.env`, o script fará automaticamente a separação das vozes:
+```bash
+python transcribe.py inputs/video.mp4
+```
+
+### 3. Melhorando a Precisão da Transcrição e Evitando Out of Memory (OOM)
+
+O modelo padrão (`small`) oferece boa velocidade e precisão geral, mas pode cometer pequenos erros gramaticais em português (como trocar plural/singular) ou errar nomes próprios incomuns. Para resolver isso:
+
+#### A. Usar um Modelo Maior (Melhor Qualidade)
+Em placas de 4GB VRAM (como a RTX 3050), você pode usar o modelo `medium` ou até `large-v3` **desde que utilize precisão `int8`** (que reduz drasticamente o uso de VRAM) e mantenha o `batch_size` baixo (1 ou 2):
+```bash
+# Alta precisão com modelo medium
+python transcribe.py inputs/conversa.mp3 --model medium --compute_type int8 --batch_size 1
+
+# Precisão máxima com modelo large-v3
+python transcribe.py inputs/conversa.mp3 --model large-v3 --compute_type int8 --batch_size 1
+```
+
+#### B. Usar Contexto Inicial (`--initial-prompt`)
+Se a transcrição errar nomes específicos ou termos técnicos recorrentes (ex: escrever "Alice" em vez de "Ares", ou "destina" em vez de "destinos"), você pode dar dicas ao Whisper:
+```bash
+python transcribe.py inputs/conversa.mp3 --model medium --compute_type int8 --initial-prompt "Olá Ravi, aqui é o Ares. Nossos destinos..."
+```
+*O prompt inicial serve para guiar o estilo, pontuação e grafia correta de nomes e termos logo no início da transcrição.*
+
+#### C. Evitando Falas Cortadas ou Omitidas (Ajuste de Sensibilidade do VAD)
+O WhisperX utiliza um modelo de VAD (Detecção de Atividade de Voz) para segmentar o áudio e ignorar trechos de silêncio antes de transcrever. Se o seu áudio tiver falas muito sussurradas, rápidas ou de baixo volume, o detector de silêncio pode cortar e ignorar diálogos inteiros.
+
+Para evitar que diálogos sejam omitidos, você pode reduzir os limiares de início (`--vad-onset`) e fim (`--vad-offset`) de fala, tornando o detector muito mais sensível:
+```bash
+# VAD altamente sensível (captura falas sussurradas/silenciosas sem cortar partes do diálogo)
+python transcribe.py inputs/EntrevistaDaimonax.mp4 --device cuda --model medium --compute_type int8 --batch_size 1 --num_speakers 2 --language pt --vad-onset 0.1 --vad-offset 0.1
+```
+- `--vad-onset` (padrão `0.500`): Limiar para iniciar a fala. Valores baixos (ex: `0.1`) são muito mais sensíveis e capturam sons de voz mais baixos de imediato.
+- `--vad-offset` (padrão `0.363`): Limiar para encerrar a fala. Valores baixos (ex: `0.1`) fazem o VAD esperar mais antes de decidir que a fala terminou, evitando cortar o fim de frases.
+- `--chunk-size` (padrão `30`): Tamanho dos blocos de áudio (em segundos) que são divididos pelo VAD para análise.
+
+
+### 4. Definindo a Quantidade de Locutores
+Fornecer dicas de interlocutores aumenta drasticamente a precisão da diarização:
+```bash
+# Caso saiba exatamente a quantidade de pessoas
+python transcribe.py inputs/reuniao.mp3 --num_speakers 2
+
+# Caso tenha uma estimativa
+python transcribe.py inputs/podcast.wav --min_speakers 2 --max_speakers 4
+```
+
+### 5. Substituindo SPEAKER_00 por Nomes Reais (Speaker Mapping)
+Você pode criar um arquivo JSON simples contendo o mapa de speakers para substituir as tags genéricas por nomes reais:
+Crie um arquivo `speakers.json`:
+```json
+{
+  "SPEAKER_00": "Gabriell",
+  "SPEAKER_01": "João"
+}
+```
+E rode o script passando este mapeamento:
+```bash
+python transcribe.py inputs/conversa.mp4 --speaker-map speakers.json
+```
+
+### 6. Processando uma Pasta Inteira
+Para transcrever múltiplos arquivos de uma só vez, aponte para um diretório:
+```bash
+# Transcreve todos os arquivos da pasta inputs/
+python transcribe.py inputs/
+
+# Transcreve recursivamente em todas as subpastas
+python transcribe.py inputs/ --recursive
+```
+
+---
+
+## 📁 Arquivos Gerados na Saída (`outputs/`)
+
+Para cada arquivo processado (ex: `aula.mp4`), o pipeline gera:
+1. **`aula.txt`**: Transcrição formatada como roteiro de diálogo com timestamps simples (ex: `[00:00:12] Gabriell: Olá...`).
+2. **`aula.json`**: Estrutura de dados completa retornada pelos modelos, contendo timestamps por palavra e dados brutos.
+3. **`aula.srt`**: Legenda padrão compatível com a maioria dos players (VLC, YouTube, etc.).
+4. **`aula.vtt`**: Legenda em formato WebVTT.
+
+### 📐 Regras de Legenda Implementadas
+As legendas geradas seguem diretrizes profissionais de legibilidade:
+- Máximo de **2 linhas** por bloco.
+- Máximo de **42 caracteres** por linha (quebras automáticas inteligentes).
+- Duração mínima de **1,0 segundo** e máxima de **6,0 segundos**.
+- Quebra automática de legenda sempre que houver **mudança de locutor**.
+
+---
+
+## ⚙️ Parâmetros Disponíveis (CLI)
+
+| Parâmetro | Padrão | Descrição |
+| :--- | :--- | :--- |
+| `input_path` | *(Obrigatório)* | Caminho do arquivo ou pasta a transcrever. |
+| `--model` | `small` | Tamanho do modelo Whisper (`tiny`, `base`, `small`, `medium`, `large-v2`, `large-v3`). |
+| `--language` | `None` | Código do idioma (ex: `pt`, `en`, `es`). Auto-detetado se omitido. |
+| `--initial-prompt` | `None` | Texto inicial para dar contexto e vocabulário ao Whisper (ex: nomes próprios, termos técnicos). |
+| `--compute_type` | `int8` | Tipo de computação/precisão (`int8`, `float16`, `float32`). |
+| `--batch_size` | `2` | Tamanho do lote para execução. |
+| `--num_speakers` | `None` | Número exato de interlocutores. |
+| `--min_speakers` | `None` | Número mínimo de interlocutores. |
+| `--max_speakers` | `None` | Número máximo de interlocutores. |
+| `--output_dir` | `outputs` | Pasta onde as exportações serão salvas. |
+| `--formats` | `txt json srt vtt` | Formatos de exportação (separados por espaço). |
+| `--no-diarization` | `False` | Pula a etapa de diarização. |
+| `--keep-wav` | `False` | Mantém o arquivo WAV mono 16kHz temporário. |
+| `--device` | `auto` | Dispositivo de hardware (`auto`, `cuda`, `cpu`). |
+| `--hf-token` | `None` | Token do Hugging Face (sobrescreve o `.env`). |
+| `--diarize-model` | `pyannote/...-1` | Modelo do Hugging Face usado para diarização. |
+| `--speaker-map` | `None` | Caminho do JSON contendo o mapeamento de speakers. |
+| `--recursive` | `False` | Busca arquivos de forma recursiva nas pastas. |
+| `--chunk-size` | `30` | Tamanho do chunk para processamento do VAD em segundos. |
+| `--vad-onset` | `0.500` | Limiar de início de fala para o VAD (menor = mais sensível). |
+| `--vad-offset` | `0.363` | Limiar de fim de fala para o VAD (menor = mais sensível). |
+| `--offline` | `False` | Ativa o modo offline do Hugging Face Hub (usa apenas cache local). |
+| `--cache-dir` | `None` | Caminho do diretório de cache do Hugging Face (sobrescreve HF_HOME). |
+
+---
+
+## Hugging Face Cache and Offline Mode
+
+O Hugging Face é necessário exclusivamente para autenticar e descarregar os modelos de diarização (separação de vozes) do `pyannote`. Toda a transcrição e processamento ocorrem **100% localmente** na sua máquina.
+
+Para otimizar o uso do cache e evitar downloads repetitivos (mesmo se você apagar ou recriar o ambiente virtual `.venv`), você pode configurar um cache permanente fora do diretório do projeto.
+
+### 1. Definindo Cache Permanente via `.env`
+
+Defina a variável `HF_HOME` no seu arquivo `.env` apontando para uma pasta permanente (use barras `/` no Windows para evitar conflitos de escape):
+
+```env
+HF_HOME=D:/huggingface_cache
+```
+
+Isso fará com que todos os modelos baixados fiquem salvos em `D:/huggingface_cache/hub`.
+
+### 2. Modo Offline (`--offline` ou `HF_HUB_OFFLINE=1`)
+
+Depois de executar a transcrição pela primeira vez e descarregar os modelos necessários no cache, você pode rodar o pipeline de forma totalmente offline. Isso impede chamadas desnecessárias de verificação ao Hugging Face Hub e acelera a inicialização:
+
+**Primeira execução (Online - para baixar os modelos no cache):**
+```powershell
+.venv\Scripts\python transcribe.py inputs/dialogo_teste.mp3 --language pt --model small --compute_type int8 --batch_size 2 --device cuda --cache-dir D:/huggingface_cache
+```
+
+**Execuções subsequentes (Offline - sem acesso à rede):**
+```powershell
+.venv\Scripts\python transcribe.py inputs/video.mp4 --language pt --model small --compute_type int8 --batch_size 2 --device cuda --cache-dir D:/huggingface_cache --offline
+```
+
+*Nota: Se você tentar rodar no modo offline (`--offline`) sem ter baixado o modelo previamente na pasta de cache configurada, o script exibirá um erro claro explicando a situação em vez de quebrar com um traceback.*
