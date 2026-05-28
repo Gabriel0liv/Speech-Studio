@@ -495,4 +495,49 @@ pip install -r requirements-api.txt
 - A rota de ficheiros bloqueia path traversal, `.env`, bases SQLite, caches, modelos e ficheiros arbitrários.
 - O heavy-job lock da API é local e em memória. Ele é suficiente para esta fase de uso local, mas não é uma fila persistente.
 
+## Phase 4.1: Real UX, Async Jobs and Voice Samples
+
+Esta fase adiciona uma camada de UX real ao frontend Lovable sem alterar o design visual:
+
+- O frontend usa endpoints assíncronos para TTS, comparação de vozes e STT.
+- O sistema de jobs é local e em memória, pensado para desenvolvimento e uso single-process.
+- O progresso de TTS usa estágios reais do `synthesize.py` sempre que possível.
+- O progresso de STT é principalmente estimado por etapa (`preparing_audio`, `transcribing`, `aligning`, `diarizing`, `exporting`).
+- O lock pesado continua permitindo apenas um job de áudio por vez.
+- As amostras de voz são guardadas em `outputs/speech/voice_samples`.
+- O Dashboard e a TopBar usam dados reais da API quando online.
+- Os mocks continuam apenas como fallback rotulado: `API offline / dados demonstrativos`.
+
+### Endpoints novos desta fase
+
+- `GET /api/dashboard`
+- `GET /api/jobs/active`
+- `GET /api/jobs/recent`
+- `GET /api/jobs/{job_id}`
+- `GET /api/jobs/{job_id}/logs`
+- `POST /api/jobs/tts/preview`
+- `POST /api/jobs/tts/generate`
+- `POST /api/jobs/tts/compare-voices`
+- `POST /api/jobs/stt/transcribe`
+- `GET /api/voices/samples`
+- `POST /api/voices/samples/generate`
+- `POST /api/voices/samples/generate/{voice_alias}`
+
+### Como gerar amostras de voz
+
+Pelo frontend:
+- abra `Texto para Voz`
+- use `Gerar amostra` num card de voz que ainda não tenha preview
+
+Pela API:
+- `POST /api/voices/samples/generate/pt_br_dora`
+- ou `POST /api/voices/samples/generate` para gerar todas
+
+### Troubleshooting rápido
+
+- Se a TopBar ou o Dashboard mostrarem `API offline`, confirme que a API FastAPI está ativa em `http://127.0.0.1:8000`.
+- Se os jobs falharem imediatamente, confirme que o `sys.executable` ativo pertence ao ambiente Python correto do projeto.
+- Se TTS/STT falhar por dependências, rode primeiro os healthchecks do backend legado:
+  - `python app.py --healthcheck`
+  - `python synthesize.py --healthcheck`
 

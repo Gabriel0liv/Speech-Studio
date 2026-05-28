@@ -8,7 +8,7 @@ import { Waveform } from "@/components/shared/Waveform";
 import { recentJobs, type JobStatus } from "@/lib/mockData";
 import { Search, Play, Copy, FolderOpen, RotateCcw, Trash2, FileAudio } from "lucide-react";
 import { toast } from "sonner";
-import { getHistory, type HistoryJob } from "@/lib/api";
+import { clearHistory, getHistory, type HistoryJob } from "@/lib/api";
 
 const filters = ["Todos", "Transcrição", "TTS", "Sucesso", "Falha", "Hoje", "Esta semana"];
 const allJobs = [
@@ -39,6 +39,7 @@ export default function Historico() {
   const [jobs, setJobs] = useState<HistoryJob[]>(allJobs);
   const [selected, setSelected] = useState<HistoryJob>(allJobs[1]);
   const [query, setQuery] = useState("");
+  const [usingFallback, setUsingFallback] = useState(false);
 
   useEffect(() => {
     const loadHistory = async () => {
@@ -48,7 +49,12 @@ export default function Historico() {
           setJobs(response);
           setSelected(response[0]);
         }
+        if (response.length === 0) {
+          setJobs([]);
+        }
+        setUsingFallback(false);
       } catch {
+        setUsingFallback(true);
         toast.info("API offline", { description: "Mostrando histórico mock do Lovable." });
       }
     };
@@ -57,10 +63,16 @@ export default function Historico() {
   }, []);
 
   const filteredJobs = useMemo(() => {
+    const now = new Date();
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const startOfWeek = new Date(startOfToday);
+    startOfWeek.setDate(startOfWeek.getDate() - 7);
+
     return jobs.filter((job) => {
       const type = normalizeType(job.job_type || job.type);
       const status = (job.status || "").toLowerCase();
       const name = job.input_name || job.name || "";
+      const createdAt = job.created_at ? new Date(job.created_at) : null;
       const matchesQuery = !query || `${name} ${type} ${status}`.toLowerCase().includes(query.toLowerCase());
 
       if (!matchesQuery) return false;
@@ -69,6 +81,8 @@ export default function Historico() {
       if (active === "Transcrição") return type === "STT";
       if (active === "Sucesso") return status === "success";
       if (active === "Falha") return status === "failed" || status === "error";
+      if (active === "Hoje") return createdAt ? createdAt >= startOfToday : false;
+      if (active === "Esta semana") return createdAt ? createdAt >= startOfWeek : false;
       return true;
     });
   }, [active, jobs, query]);
@@ -88,10 +102,24 @@ export default function Historico() {
     <div className="space-y-6">
       <div className="flex items-end justify-between flex-wrap gap-4">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Histórico</h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-3xl font-bold tracking-tight">Histórico</h1>
+            {usingFallback ? <Badge variant="outline" className="text-warning border-warning/30">API offline / dados demonstrativos</Badge> : null}
+          </div>
           <p className="text-muted-foreground mt-1">Todos os jobs locais (SQLite).</p>
         </div>
-        <Button variant="outline" onClick={() => toast.warning("Histórico limpo", { description: "Arquivos de saída foram preservados." })}>
+        <Button
+          variant="outline"
+          onClick={async () => {
+            try {
+              await clearHistory(false);
+              setJobs([]);
+              toast.success("Histórico limpo", { description: "Arquivos de saída foram preservados." });
+            } catch {
+              toast.info("Limpeza via frontend ainda não implementada.");
+            }
+          }}
+        >
           <Trash2 className="size-4" /> Limpar histórico
         </Button>
       </div>
@@ -132,6 +160,13 @@ export default function Historico() {
                   <td className="p-3"><StatusPill status={toJobStatus(j.status)} /></td>
                 </tr>
               ))}
+              {filteredJobs.length === 0 ? (
+                <tr>
+                  <td colSpan={4} className="p-6 text-center text-sm text-muted-foreground">
+                    Nenhum job encontrado para o filtro atual.
+                  </td>
+                </tr>
+              ) : null}
             </tbody>
           </table>
         </Card>

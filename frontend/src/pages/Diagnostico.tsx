@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { StatusPill } from "@/components/shared/StatusPill";
 import { diagnosticLines } from "@/lib/mockData";
 import { Play, Terminal } from "lucide-react";
@@ -100,7 +101,10 @@ export default function Diagnostico() {
     <div className="space-y-6">
       <div className="flex items-end justify-between flex-wrap gap-4">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Diagnóstico</h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-3xl font-bold tracking-tight">Diagnóstico</h1>
+            {usingFallback ? <Badge variant="outline" className="text-warning border-warning/30">API offline / dados demonstrativos</Badge> : null}
+          </div>
           <p className="text-muted-foreground mt-1">Healthcheck completo do ambiente local.</p>
         </div>
         <Button onClick={() => { void loadHealth(); }} className="bg-gradient-to-r from-primary to-accent text-primary-foreground border-0">

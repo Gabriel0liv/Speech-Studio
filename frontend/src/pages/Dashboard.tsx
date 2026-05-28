@@ -1,3 +1,4 @@
+import { useEffect, useMemo, useState } from "react";
 import { mockStats, recentJobs, healthChecks } from "@/lib/mockData";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -5,20 +6,87 @@ import { Badge } from "@/components/ui/badge";
 import { StatusPill } from "@/components/shared/StatusPill";
 import { FileAudio, Mic, Package, ListChecks, HardDrive, ArrowRight, Activity } from "lucide-react";
 import { Link } from "react-router-dom";
+import { getDashboard, type DashboardResponse, type HistoryJob } from "@/lib/api";
 
-const statCards = [
-  { label: "Transcrições hoje", value: mockStats.transcriptionsToday, icon: FileAudio, accent: "from-cyan-500/20 to-cyan-500/0" },
-  { label: "Áudios gerados", value: mockStats.audiosGenerated, icon: Mic, accent: "from-purple-500/20 to-purple-500/0" },
-  { label: "Modelos disponíveis", value: mockStats.modelsAvailable, icon: Package, accent: "from-emerald-500/20 to-emerald-500/0" },
-  { label: "Jobs recentes", value: mockStats.recentJobs, icon: ListChecks, accent: "from-amber-500/20 to-amber-500/0" },
-  { label: "Storage local", value: mockStats.storage, icon: HardDrive, accent: "from-rose-500/20 to-rose-500/0" },
+const statMeta = [
+  { key: "transcriptions_today", label: "Transcrições hoje", icon: FileAudio, accent: "from-cyan-500/20 to-cyan-500/0" },
+  { key: "tts_today", label: "Áudios gerados", icon: Mic, accent: "from-purple-500/20 to-purple-500/0" },
+  { key: "available_voices", label: "Vozes disponíveis", icon: Package, accent: "from-emerald-500/20 to-emerald-500/0" },
+  { key: "total_jobs", label: "Jobs registrados", icon: ListChecks, accent: "from-amber-500/20 to-amber-500/0" },
+  { key: "storage_used_mb", label: "Storage local", icon: HardDrive, accent: "from-rose-500/20 to-rose-500/0" },
 ];
 
 export default function Dashboard() {
+  const [dashboard, setDashboard] = useState<DashboardResponse | null>(null);
+  const [usingFallback, setUsingFallback] = useState(false);
+
+  useEffect(() => {
+    const loadDashboard = async () => {
+      try {
+        const response = await getDashboard();
+        setDashboard(response);
+        setUsingFallback(false);
+      } catch {
+        setDashboard(null);
+        setUsingFallback(true);
+      }
+    };
+
+    void loadDashboard();
+  }, []);
+
+  const statCards = useMemo(() => {
+    if (!dashboard) {
+      return [
+        { label: "Transcrições hoje", value: mockStats.transcriptionsToday, icon: FileAudio, accent: "from-cyan-500/20 to-cyan-500/0" },
+        { label: "Áudios gerados", value: mockStats.audiosGenerated, icon: Mic, accent: "from-purple-500/20 to-purple-500/0" },
+        { label: "Modelos disponíveis", value: mockStats.modelsAvailable, icon: Package, accent: "from-emerald-500/20 to-emerald-500/0" },
+        { label: "Jobs recentes", value: mockStats.recentJobs, icon: ListChecks, accent: "from-amber-500/20 to-amber-500/0" },
+        { label: "Storage local", value: mockStats.storage, icon: HardDrive, accent: "from-rose-500/20 to-rose-500/0" },
+      ];
+    }
+
+    return statMeta.map((item) => ({
+      label: item.label,
+      icon: item.icon,
+      accent: item.accent,
+      value: item.key === "storage_used_mb"
+        ? `${dashboard.storage_used_mb.toFixed(2)} MB`
+        : String(dashboard[item.key as keyof DashboardResponse] ?? 0),
+    }));
+  }, [dashboard]);
+
+  const renderedJobs = useMemo(() => {
+    if (!dashboard) {
+      return recentJobs.slice(0, 6);
+    }
+    return dashboard.recent_jobs;
+  }, [dashboard]);
+
+  const renderedHealth = useMemo(() => {
+    if (!dashboard) {
+      return healthChecks;
+    }
+
+    return [
+      { name: "CUDA / GPU", status: dashboard.system_health.cuda.available ? "success" as const : "warning" as const, label: dashboard.system_health.cuda.label },
+      { name: "FFmpeg", status: dashboard.system_health.ffmpeg.available ? "success" as const : "warning" as const, label: dashboard.system_health.ffmpeg.label },
+      { name: "eSpeak NG", status: dashboard.system_health.espeak.available ? "success" as const : "warning" as const, label: dashboard.system_health.espeak.label },
+      { name: "HF Token", status: dashboard.system_health.hf_token.available ? "success" as const : "warning" as const, label: dashboard.system_health.hf_token.label },
+      { name: "Kokoro", status: dashboard.system_health.kokoro.available ? "success" as const : "warning" as const, label: dashboard.system_health.kokoro.label },
+      { name: "Piper", status: dashboard.system_health.piper.available ? "success" as const : "warning" as const, label: dashboard.system_health.piper.label },
+      { name: "WhisperX", status: dashboard.system_health.whisperx.available ? "success" as const : "warning" as const, label: dashboard.system_health.whisperx.label },
+    ];
+  }, [dashboard]);
+
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-3xl font-bold tracking-tight">Painel</h1>
+        <div className="flex flex-wrap items-center gap-2">
+          <h1 className="text-3xl font-bold tracking-tight">Painel</h1>
+          {usingFallback ? <Badge variant="outline" className="text-warning border-warning/30">Dados demonstrativos — API offline</Badge> : null}
+          {dashboard && dashboard.active_job ? <Badge variant="outline" className="text-primary border-primary/30">Job ativo: {dashboard.active_job.stage}</Badge> : null}
+        </div>
         <p className="text-muted-foreground mt-1">Visão geral do seu estúdio de voz local.</p>
       </div>
 
@@ -82,18 +150,24 @@ export default function Dashboard() {
             </Button>
           </div>
           <div className="space-y-2">
-            {recentJobs.slice(0, 6).map((j) => (
-              <div key={j.id} className="flex items-center justify-between p-3 rounded-lg bg-secondary/40 border border-border/40 hover:border-border transition">
-                <div className="flex items-center gap-3 min-w-0">
-                  <Badge variant="outline" className="font-mono text-[10px]">{j.type}</Badge>
-                  <span className="truncate text-sm">{j.name}</span>
-                </div>
-                <div className="flex items-center gap-3 shrink-0">
-                  <span className="text-xs text-muted-foreground hidden sm:block">{j.time}</span>
-                  <StatusPill status={j.status} />
-                </div>
+            {dashboard && renderedJobs.length === 0 ? (
+              <div className="p-4 rounded-lg bg-secondary/40 border border-border/40 text-sm text-muted-foreground">
+                Nenhum job registrado ainda.
               </div>
-            ))}
+            ) : (
+              renderedJobs.slice(0, 6).map((j: HistoryJob) => (
+                <div key={String(j.id)} className="flex items-center justify-between p-3 rounded-lg bg-secondary/40 border border-border/40 hover:border-border transition">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <Badge variant="outline" className="font-mono text-[10px]">{String(j.type || j.job_type || "JOB")}</Badge>
+                    <span className="truncate text-sm">{String(j.name || j.input_name || "Sem nome")}</span>
+                  </div>
+                  <div className="flex items-center gap-3 shrink-0">
+                    <span className="text-xs text-muted-foreground hidden sm:block">{String(j.time || j.created_at || "-")}</span>
+                    <StatusPill status={(j.status as "success" | "warning" | "error" | "running" | "ready" | "missing" | "queued") || "warning"} />
+                  </div>
+                </div>
+              ))
+            )}
           </div>
         </Card>
 
@@ -103,7 +177,7 @@ export default function Dashboard() {
             <h2 className="font-semibold">Saúde do sistema</h2>
           </div>
           <div className="space-y-2.5">
-            {healthChecks.map((h) => (
+            {renderedHealth.map((h) => (
               <div key={h.name} className="flex items-center justify-between">
                 <span className="text-sm text-muted-foreground">{h.name}</span>
                 <StatusPill status={h.status} label={h.label} />

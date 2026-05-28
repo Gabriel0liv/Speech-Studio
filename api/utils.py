@@ -4,6 +4,7 @@ import os
 import sys
 import subprocess
 import threading
+import shutil
 from datetime import datetime
 from pathlib import Path
 from tempfile import NamedTemporaryFile
@@ -60,10 +61,10 @@ def save_upload_file(upload) -> Path:
     return target
 
 
-def make_api_output_path(prefix: str, extension: str) -> Path:
+def make_api_output_path(prefix: str, extension: str, parent: str = "speech") -> Path:
     extension = extension if extension.startswith(".") else f".{extension}"
     filename = f"{prefix}_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid4().hex[:8]}{extension}"
-    return ensure_directory(resolve_project_path("outputs", "speech")) / filename
+    return ensure_directory(resolve_project_path("outputs", parent)) / filename
 
 
 def make_api_output_dir(prefix: str, parent: str = "transcriptions") -> Path:
@@ -76,9 +77,17 @@ def acquire_heavy_job() -> bool:
     return HEAVY_JOB_LOCK.acquire(blocking=False)
 
 
+def acquire_heavy_job_blocking() -> None:
+    HEAVY_JOB_LOCK.acquire()
+
+
 def release_heavy_job() -> None:
     if HEAVY_JOB_LOCK.locked():
         HEAVY_JOB_LOCK.release()
+
+
+def heavy_job_is_running() -> bool:
+    return HEAVY_JOB_LOCK.locked()
 
 
 def run_subprocess(command: List[str], timeout_seconds: int) -> Dict[str, Any]:
@@ -198,3 +207,41 @@ def heavy_job_busy_message() -> str:
 
 def python_command(*args: str) -> List[str]:
     return [sys.executable, *args]
+
+
+def output_storage_size_mb() -> float:
+    outputs_dir = resolve_project_path("outputs")
+    if not outputs_dir.exists():
+        return 0.0
+
+    total_bytes = 0
+    for candidate in outputs_dir.rglob("*"):
+        if candidate.is_file():
+            try:
+                total_bytes += candidate.stat().st_size
+            except OSError:
+                continue
+    return round(total_bytes / (1024 * 1024), 2)
+
+
+def remove_safe_output_path(path: Path) -> bool:
+    resolved = path.resolve()
+    for base_dir in SAFE_FILE_CATEGORIES.values():
+        base_resolved = base_dir.resolve()
+        try:
+            resolved.relative_to(base_resolved)
+        except ValueError:
+            continue
+
+        if not is_safe_file(resolved):
+            return False
+
+        if resolved.is_file():
+            resolved.unlink(missing_ok=True)
+            return True
+
+        if resolved.is_dir():
+            shutil.rmtree(resolved, ignore_errors=True)
+            return True
+
+    return False

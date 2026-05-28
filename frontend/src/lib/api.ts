@@ -25,12 +25,68 @@ export type HistoryJob = Record<string, unknown> & {
   file_url?: string | null;
 };
 
+export type DashboardResponse = {
+  success: boolean;
+  transcriptions_today: number;
+  tts_today: number;
+  total_jobs: number;
+  jobs_success: number;
+  jobs_failed: number;
+  success_rate: number;
+  available_voices: number;
+  storage_used_mb: number;
+  recent_jobs: HistoryJob[];
+  system_health: Record<string, { available: boolean; label: string }>;
+  active_job?: ApiJob | null;
+};
+
 export type Preset = Record<string, unknown>;
 export type SpeakerProfile = Record<string, unknown>;
-export type ModelVoice = Record<string, unknown>;
+export type ModelVoice = Record<string, unknown> & {
+  alias?: string;
+  engine?: string;
+  name?: string;
+  lang?: string;
+  style?: string;
+  status?: string;
+};
 export type ApiEngine = Record<string, unknown>;
 export type PtbrSuggestion = { original: string; suggested: string; note: string };
 export type PtbrAnalysis = { warnings: string[]; suggestions: PtbrSuggestion[]; has_issues: boolean };
+export type ApiJobStatus = "queued" | "running" | "success" | "error" | "cancelled";
+export type ProgressMode = "exact" | "estimated" | "indeterminate";
+export type ApiJob = {
+  job_id: string;
+  type: string;
+  status: ApiJobStatus;
+  stage: string;
+  progress: number;
+  progress_mode: ProgressMode;
+  message: string;
+  created_at: string;
+  started_at?: string | null;
+  finished_at?: string | null;
+  command?: string[];
+  stdout_tail?: string[];
+  stderr_tail?: string[];
+  logs_tail?: string[];
+  result?: Record<string, unknown> | null;
+  error?: string | null;
+};
+export type JobCreateResponse = {
+  success: boolean;
+  job_id: string;
+  status: ApiJobStatus;
+  poll_url: string;
+};
+export type VoiceSample = {
+  voice_alias: string;
+  engine: string;
+  filename: string;
+  exists: boolean;
+  sample_path: string | null;
+  sample_url: string | null;
+};
 
 export type TtsRequest = {
   text: string;
@@ -98,6 +154,12 @@ export async function getHistory() {
   return response.jobs;
 }
 
+export function clearHistory(deleteFiles = false) {
+  return fetch(`${API_BASE_URL}/history?delete_files=${deleteFiles ? "true" : "false"}`, {
+    method: "DELETE",
+  }).then(parseResponse<{ success: boolean; deleted_paths: number; message: string }>);
+}
+
 export async function getPresets() {
   const response = await getJson<{ success: boolean; presets: Preset[] }>("/presets");
   return response.presets;
@@ -110,6 +172,10 @@ export async function getSpeakerProfiles() {
 
 export async function getModels() {
   return getJson<{ success: boolean; engines: ApiEngine[]; voices: ModelVoice[] }>("/models");
+}
+
+export function getDashboard() {
+  return getJson<DashboardResponse>("/dashboard");
 }
 
 export function analyzePtbrText(text: string, language = "pt-br") {
@@ -128,10 +194,58 @@ export function compareVoices(payload: { text?: string; language?: string; norma
   return postJson<Record<string, unknown>>("/tts/compare-voices", payload);
 }
 
+export function createTtsPreviewJob(payload: TtsRequest) {
+  return postJson<JobCreateResponse>("/jobs/tts/preview", payload);
+}
+
+export function createTtsGenerateJob(payload: TtsRequest) {
+  return postJson<JobCreateResponse>("/jobs/tts/generate", payload);
+}
+
+export function createCompareVoicesJob(payload: { text?: string; language?: string; normalize_ptbr?: boolean }) {
+  return postJson<JobCreateResponse>("/jobs/tts/compare-voices", payload);
+}
+
 export async function transcribeFile(formData: FormData) {
   const response = await fetch(`${API_BASE_URL}/stt/transcribe`, {
     method: "POST",
     body: formData,
   });
   return parseResponse<Record<string, unknown>>(response);
+}
+
+export async function createSttJob(formData: FormData) {
+  const response = await fetch(`${API_BASE_URL}/jobs/stt/transcribe`, {
+    method: "POST",
+    body: formData,
+  });
+  return parseResponse<JobCreateResponse>(response);
+}
+
+export function getJob(jobId: string) {
+  return getJson<ApiJob>(`/jobs/${jobId}`);
+}
+
+export function getJobLogs(jobId: string) {
+  return getJson<{ success: boolean; stdout_tail: string[]; stderr_tail: string[]; logs_tail: string[] }>(`/jobs/${jobId}/logs`);
+}
+
+export function getActiveJobs() {
+  return getJson<{ success: boolean; jobs: ApiJob[]; active_job?: ApiJob | null }>("/jobs/active");
+}
+
+export function getRecentApiJobs(limit = 20) {
+  return getJson<{ success: boolean; jobs: ApiJob[] }>(`/jobs/recent?limit=${limit}`);
+}
+
+export function getVoiceSamples() {
+  return getJson<{ success: boolean; samples: VoiceSample[] }>("/voices/samples");
+}
+
+export function generateVoiceSamples() {
+  return postJson<JobCreateResponse>("/voices/samples/generate", {});
+}
+
+export function generateVoiceSample(voiceAlias: string) {
+  return postJson<JobCreateResponse>(`/voices/samples/generate/${voiceAlias}`, {});
 }

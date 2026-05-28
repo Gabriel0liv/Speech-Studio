@@ -56,6 +56,16 @@ def _suppress_warnings_if_not_verbose(verbose: bool):
         warnings.filterwarnings("ignore", message=".*Missing phoneme.*")
 
 
+def _progress(stage: str, message: str, current: int | None = None, total: int | None = None):
+    tokens = [f"stage={stage}"]
+    if current is not None:
+        tokens.append(f"current={current}")
+    if total is not None:
+        tokens.append(f"total={total}")
+    tokens.append(f'message="{message}"')
+    print("[PROGRESS] " + " ".join(tokens), flush=True)
+
+
 def _synthesize_single(engine_name, voice, text, output_path, fmt, device, speed, verbose=False):
     """
     Synthesize text using the given engine+voice. Returns (success, duration_or_error).
@@ -115,14 +125,17 @@ def run_compare_voices(text: str, output_dir: str, device: str, verbose: bool = 
 
     results = []
     print(f"\n[*] Iniciando comparativo de vozes PT-BR...")
+    _progress("preparing", "Preparando comparativo de vozes PT-BR.")
     print(f"    Texto: {text[:80]}{'...' if len(text) > 80 else ''}")
     print(f"    Pasta de saida: {os.path.abspath(output_dir)}\n")
 
-    for engine_name, voice_alias, filename_stem in _PTBR_COMPARE_VOICES:
+    total_voices = len(_PTBR_COMPARE_VOICES)
+    for index, (engine_name, voice_alias, filename_stem) in enumerate(_PTBR_COMPARE_VOICES, start=1):
         output_path = os.path.join(output_dir, f"{filename_stem}.wav")
         from src.tts.registry import VOICE_MAPPING
         resolved_id = VOICE_MAPPING.get(engine_name, {}).get(voice_alias, {}).get("id", voice_alias)
 
+        _progress("voice", f"Gerando amostra {index} de {total_voices}: {voice_alias}", current=index, total=total_voices)
         print(f"  -> {filename_stem} ({engine_name}/{voice_alias})...", end=" ", flush=True)
         success, result = _synthesize_single(engine_name, voice_alias, text, output_path, "wav", device, 1.0, verbose)
 
@@ -170,6 +183,7 @@ def run_compare_voices(text: str, output_dir: str, device: str, verbose: bool = 
             f.write(f"| {r['voice_alias']} | {r['engine'].upper()} | {status_icon} {r['status']} | {dur} | {path} |\n")
 
     successes = sum(1 for r in results if r["status"] == "success")
+    _progress("success", f"Comparativo concluido com {successes} de {len(results)} vozes.")
     print(f"\n[+] Comparativo concluido: {successes}/{len(results)} vozes geradas com sucesso.")
     print(f"    Relatorio JSON: {os.path.abspath(report_json)}")
     print(f"    Relatorio MD:   {os.path.abspath(report_md)}\n")
@@ -416,6 +430,7 @@ def main():
         )
 
     # 3. Create engine instance
+    _progress("preparing", "Preparando sintese.")
     print(f"[*] A inicializar motor '{engine_name}' com a voz '{voice}' (velocidade: {speed}) no dispositivo '{device.upper()}'...")
     import time
     start_time = time.time()
@@ -433,12 +448,15 @@ def main():
 
     # 4. Synthesize text
     chunks = chunk_text(text, max_chars=400)
+    _progress("preparing", f"Texto preparado em {len(chunks)} fragmento(s).")
     print(f"[*] Texto dividido em {len(chunks)} fragmentos para sintese.")
 
     if len(chunks) == 1:
+        _progress("chunk", "Sintetizando fragmento 1 de 1.", current=1, total=1)
         print("[*] A sintetizar...")
         try:
             engine.synthesize(chunks[0], output_path, format=fmt)
+            _progress("success", "Sintese concluida.")
             print(f"[+] Sintese concluida com sucesso! Arquivo salvo em:\n    {os.path.abspath(output_path)}")
             if job_id is not None:
                 from src.core.history import update_job_success
@@ -457,14 +475,17 @@ def main():
         try:
             for idx, chunk in enumerate(chunks):
                 chunk_file = os.path.join(TEMP_DIR, f"chunk_{idx}_{os.getpid()}.wav")
+                _progress("chunk", f"Sintetizando fragmento {idx + 1} de {len(chunks)}.", current=idx + 1, total=len(chunks))
                 print(f"    -> Fragmento {idx + 1}/{len(chunks)} ({len(chunk)} caracteres)...")
                 engine.synthesize(chunk, chunk_file, format="wav")
                 chunk_files.append(chunk_file)
 
+            _progress("exporting", "Mesclando fragmentos de audio.")
             print("[*] A mesclar fragmentos de audio...")
             if fmt == "mp3":
                 temp_merged_wav = os.path.join(TEMP_DIR, f"merged_temp_{os.getpid()}.wav")
                 merge_wav_files(chunk_files, temp_merged_wav)
+                _progress("exporting", "Convertendo audio para MP3.")
                 print("[*] A converter audio mesclado para MP3...")
                 convert_wav_to_mp3(temp_merged_wav, output_path)
                 if os.path.exists(temp_merged_wav):
@@ -472,6 +493,7 @@ def main():
             else:
                 merge_wav_files(chunk_files, output_path)
 
+            _progress("success", "Sintese concluida.")
             print(f"[+] Sintese de multiplos fragmentos concluida com sucesso! Arquivo salvo em:\n    {os.path.abspath(output_path)}")
             if job_id is not None:
                 from src.core.history import update_job_success

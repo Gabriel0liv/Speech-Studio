@@ -6,7 +6,7 @@ export const mockStats = {
   storage: "4.7 GB",
 };
 
-export type JobStatus = "success" | "warning" | "error" | "running" | "ready" | "missing";
+export type JobStatus = "success" | "warning" | "error" | "running" | "ready" | "missing" | "queued";
 
 export const recentJobs = [
   { id: "1", type: "STT", name: "podcast_ep32.mp3", status: "success" as JobStatus, time: "há 4 min" },

@@ -2,12 +2,15 @@ import { cn } from "@/lib/utils";
 import { CheckCircle2, AlertTriangle, XCircle, Loader2, Circle } from "lucide-react";
 import type { JobStatus } from "@/lib/mockData";
 
-const map: Record<JobStatus, { color: string; icon: any; label: string }> = {
+type StatusConfig = { color: string; icon: typeof CheckCircle2; label: string };
+
+const map: Record<JobStatus, StatusConfig> = {
   success: { color: "bg-success/15 text-success border-success/30", icon: CheckCircle2, label: "Sucesso" },
   ready: { color: "bg-success/15 text-success border-success/30", icon: CheckCircle2, label: "Pronto" },
   warning: { color: "bg-warning/15 text-warning border-warning/30", icon: AlertTriangle, label: "Aviso" },
   error: { color: "bg-destructive/15 text-destructive border-destructive/30", icon: XCircle, label: "Erro" },
   running: { color: "bg-primary/15 text-primary border-primary/30", icon: Loader2, label: "Executando" },
+  queued: { color: "bg-primary/10 text-primary border-primary/20", icon: Loader2, label: "Na fila" },
   missing: { color: "bg-muted/40 text-muted-foreground border-border", icon: Circle, label: "Ausente" },
 };
 

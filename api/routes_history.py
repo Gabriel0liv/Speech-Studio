@@ -3,8 +3,8 @@ from pathlib import Path
 
 from fastapi import APIRouter, Query
 
-from api.utils import local_path_to_file_url
-from src.core.history import list_jobs
+from api.utils import local_path_to_file_url, remove_safe_output_path
+from src.core.history import clear_history, list_jobs
 
 
 router = APIRouter(tags=["history"])
@@ -50,3 +50,24 @@ def get_history(limit: int = Query(default=50, ge=1, le=200)):
         job["name"] = job.get("input_name") or job.get("text_snippet") or f"job_{job.get('id')}"
         job["time"] = _relative_time(job.get("created_at"))
     return {"success": True, "jobs": jobs}
+
+
+@router.delete("/history")
+def delete_history(delete_files: bool = Query(default=False)):
+    deleted_paths = 0
+    if delete_files:
+        for job in list_jobs(limit=10000):
+            primary_output = job.get("primary_output_path")
+            output_dir = job.get("output_dir")
+            if primary_output and remove_safe_output_path(Path(primary_output)):
+                deleted_paths += 1
+            elif output_dir and remove_safe_output_path(Path(output_dir)):
+                deleted_paths += 1
+
+    clear_history()
+    return {
+        "success": True,
+        "delete_files": delete_files,
+        "deleted_paths": deleted_paths,
+        "message": "Historico limpo com sucesso.",
+    }

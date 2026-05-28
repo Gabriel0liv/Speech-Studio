@@ -1,12 +1,18 @@
+from pathlib import Path
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from api.routes_dashboard import router as dashboard_router
 from api.routes_files import router as files_router
 from api.routes_health import router as health_router
 from api.routes_history import router as history_router
+from api.routes_job_actions import router as job_actions_router
+from api.routes_jobs import router as jobs_router
 from api.routes_presets import router as presets_router
 from api.routes_stt import router as stt_router
 from api.routes_tts import router as tts_router
+from api.routes_voices import router as voices_router
 from src.core.database import initialize_database
 
 
@@ -108,8 +114,12 @@ def get_models():
 
 
 app.include_router(health_router, prefix="/api")
+app.include_router(dashboard_router, prefix="/api")
 app.include_router(history_router, prefix="/api")
 app.include_router(presets_router, prefix="/api")
 app.include_router(tts_router, prefix="/api")
 app.include_router(stt_router, prefix="/api")
+app.include_router(jobs_router, prefix="/api")
+app.include_router(job_actions_router, prefix="/api")
+app.include_router(voices_router, prefix="/api")
 app.include_router(files_router, prefix="/api")
