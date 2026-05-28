@@ -260,3 +260,85 @@ Depois de executar a transcrição pela primeira vez e descarregar os modelos ne
 ```
 
 *Nota: Se você tentar rodar no modo offline (`--offline`) sem ter baixado o modelo previamente na pasta de cache configurada, o script exibirá um erro claro explicando a situação em vez de quebrar com um traceback.*
+
+---
+
+## 🎙️ Fase 2: Speech Studio (Interface Gradio & Síntese de Voz - TTS)
+
+A Fase 2 expande este projeto para um estúdio de áudio profissional local completo, adicionando uma interface web interativa baseada em **Gradio** e suporte à síntese de voz (Text-to-Speech) com os motores **Kokoro** (alto desempenho e naturalidade) e **Piper** (síntese extremamente rápida).
+
+### 🚀 Novas Funcionalidades
+
+1. **Interface Gráfica Baseada em Gradio (`app.py`):**
+   - **Tab de Transcrição (STT):** Faça upload de arquivos, configure o modelo Whisper, Batch Size, precisão e parâmetros de diarização. O pipeline é executado em um subprocesso isolado para liberar completamente a VRAM da GPU ao finalizar, evitando falhas de memória (OOM).
+   - **Tab de Síntese de Voz (TTS):** Escreva roteiros, selecione vozes, configure a velocidade e o formato de saída (WAV/MP3). Inclui um fluxo de **Prévia Rápida** (default: primeiros 300 caracteres) para testar a entonação antes de gerar o áudio completo.
+   - **Tab de Modelos e Vozes:** Veja o status detalhado da GPU (CUDA), FFmpeg, eSpeak NG, Kokoro e Piper.
+   - **Tab de Configurações:** Verifique as variáveis de ambiente (`HF_HOME`, `HF_HUB_OFFLINE`) e o status do token Hugging Face de forma segura (nunca revelando o token).
+
+2. **CLI de Síntese de Voz (`synthesize.py`):**
+   - Permite sintetizar textos via linha de comando com suporte a quebra inteligente de sentenças (chunks de até 400 caracteres) e conversão para MP3 via FFmpeg.
+
+---
+
+### 📦 Instalação do Módulo de TTS e App
+
+1. **Instalar dependências adicionais:**
+   Abra o PowerShell na pasta do projeto e execute:
+   ```powershell
+   powershell -ExecutionPolicy Bypass -File .\install_tts.ps1
+   ```
+   *Este script instalará os pacotes do `requirements-tts.txt` (Gradio, Kokoro, onnxruntime e Piper) e verificará a presença do eSpeak NG.*
+
+2. **Instalar eSpeak NG (Obrigatório para TTS):**
+   Tanto o Kokoro quanto o Piper utilizam o `espeak-ng` para conversão de texto em fonemas no Windows:
+   - Baixe o instalador `.msi` da [página de lançamentos do espeak-ng](https://github.com/espeak-ng/espeak-ng/releases).
+   - Execute o instalador (ex: `espeak-ng-1.52.0-x64.msi`).
+   - Se o instalador não adicionar o diretório automaticamente ao PATH, o script do Speech Studio tentará localizá-lo em caminhos comuns (`C:\Program Files\eSpeak NG` ou `C:\Program Files (x86)\eSpeak NG`) automaticamente.
+
+---
+
+### 💻 Como Usar a Síntese de Voz (CLI)
+
+Use o script `synthesize.py` para gerar áudios a partir de textos:
+
+#### 1. Síntese Básica com Kokoro (Voz Padrão Dora - PT-BR)
+```bash
+python synthesize.py --text "Olá, isto é um teste do Speech Studio com o motor Kokoro." --engine kokoro --output outputs/speech/teste_kokoro.wav
+```
+
+#### 2. Síntese com Piper (Voz Lula - PT-BR)
+*O motor Piper baixará automaticamente os arquivos do modelo (`.onnx` e `.onnx.json`) do Hugging Face na primeira execução, salvando-os na pasta `voices/`.*
+```bash
+python synthesize.py --text "Olá, este é um teste utilizando o Piper localmente." --engine piper --voice pt_br_lula --output outputs/speech/teste_piper.wav
+```
+
+#### 3. Síntese a partir de arquivo de texto (.txt) com Prévia (Preview)
+```bash
+python synthesize.py --input roteiro.txt --engine kokoro --preview --preview-chars 300 --output outputs/speech/previa_roteiro.wav
+```
+
+#### 4. Exportar diretamente em MP3
+```bash
+python synthesize.py --text "Texto exportado em MP3." --engine kokoro --format mp3 --output outputs/speech/saida.mp3
+```
+
+---
+
+### 🖥️ Iniciando a Interface Web (Gradio)
+
+Abra o PowerShell no projeto e execute:
+```powershell
+powershell -ExecutionPolicy Bypass -File .\launch_app.ps1
+```
+Ou execute diretamente:
+```bash
+python app.py
+```
+Isso iniciará um servidor web local em `http://127.0.0.1:7860`. Abra este endereço no navegador para utilizar o Speech Studio de forma visual.
+
+---
+
+### ⚠️ AVISO DE ÉTICA E SEGURANÇA
+
+This tool is intended for local speech transcription and local text-to-speech generation. Do not use it to impersonate real people, clone voices without permission, scam, defame, or mislead others. Only use voice cloning or speaker-like synthesis with your own voice or with explicit consent. For commercial use, verify the license of each model and voice.
+

@@ -1,0 +1,4 @@
+gradio>=4.0.0
+kokoro>=0.1.9
+onnxruntime>=1.15.0
+piper-tts>=1.2.0
