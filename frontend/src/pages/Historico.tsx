@@ -18,6 +18,12 @@ const allJobs = [
   { id: "9", type: "TTS", name: "tutorial_piper.wav", status: "warning" as const, time: "2 dias" },
 ];
 
+const normalizeType = (value?: string) => {
+  const normalized = (value || "").toUpperCase();
+  if (normalized === "TRANSCRIPTION") return "STT";
+  return normalized || "JOB";
+};
+
 export default function Historico() {
   const [active, setActive] = useState("Todos");
   const [jobs, setJobs] = useState<HistoryJob[]>(allJobs);
@@ -42,7 +48,7 @@ export default function Historico() {
 
   const filteredJobs = useMemo(() => {
     return jobs.filter((job) => {
-      const type = (job.job_type || job.type || "").toUpperCase();
+      const type = normalizeType(job.job_type || job.type);
       const status = (job.status || "").toLowerCase();
       const name = job.input_name || job.name || "";
       const matchesQuery = !query || `${name} ${type} ${status}`.toLowerCase().includes(query.toLowerCase());
@@ -63,7 +69,7 @@ export default function Historico() {
     }
   }, [filteredJobs, selected]);
 
-  const selectedType = (selected?.job_type || selected?.type || "").toUpperCase();
+  const selectedType = normalizeType(selected?.job_type || selected?.type);
   const selectedName = selected?.input_name || selected?.name || "Sem nome";
   const outputPath = selected?.primary_output_path || selected?.output_dir || "N/D";
   const relativeTime = selected?.time || selected?.created_at || "agora";

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { StatusPill } from "@/components/shared/StatusPill";
-import { diagnosticLines, healthChecks } from "@/lib/mockData";
+import { diagnosticLines } from "@/lib/mockData";
 import { Play, Terminal } from "lucide-react";
 import { toast } from "sonner";
 import { getHealth, type HealthResponse } from "@/lib/api";
