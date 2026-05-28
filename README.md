@@ -414,4 +414,41 @@ Para rodar a diarização (pyannote), é obrigatório possuir um token do Huggin
 * **Proteção de Segredos:** O healthcheck nunca imprime ou registra o valor real do seu token, mostrando apenas `Found (Masked)`.
 * **Modo Offline:** Se precisar trabalhar totalmente offline após ter baixado os modelos uma vez, defina `HF_HUB_OFFLINE=1` e defina um caminho permanente para o cache na variável `HF_HOME` do arquivo `.env`.
 
+---
+
+## 🎛️ Presets, Perfis e Histórico Local (Phase 3)
+
+O Speech Studio agora conta com um banco de dados local SQLite (`data/speech_studio.db`) para guardar o histórico de execuções, presets de configuração de voz (TTS) e perfis de mapeamento de interlocutores (STT/Diarização).
+
+### 1. Histórico Local de Execuções (Jobs)
+
+Todas as transcrições (STT) e sínteses de voz (TTS) executadas via CLI ou interface são salvas na tabela de histórico por padrão.
+* **Segurança e Privacidade:** O texto completo não é guardado no banco por padrão. Armazena-se apenas um pequeno fragmento (snippet) de até 300 caracteres.
+* **Salvar Texto Completo:** Caso queira armazenar o conteúdo na íntegra nos metadados JSON do banco, passe o argumento `--save-full-text` no CLI ou ative a opção "Salvar Texto Completo no Histórico" na aba **⚙️ Configurações** da interface.
+* **Desativar Histórico:** Use o argumento `--no-history` no CLI ou desmarque "Ativar Histórico de Execuções" na interface.
+* **Precedência:** A flag `--no-history` ou a desativação nas configurações globais cancelará a gravação.
+
+### 2. Presets de Parâmetros (TTS)
+
+Evite redigitar parâmetros complexos de velocidade, motor, voz e caracteres de prévia a cada síntese de áudio.
+* **Ordem de Precedência:** Parâmetro CLI explícito > Preset configurado > Valores padrões da aplicação.
+* **Utilização via CLI:**
+  ```bash
+  python synthesize.py --text "Olá, usando configurações personalizadas." --preset "Narrador Kokoro Alex"
+  ```
+* **Utilização via UI:** Selecione o preset desejado na aba de síntese de voz e clique em **Aplicar Preset** para preencher instantaneamente todos os controles deslizantes, caixas de seleção e tabelas de voz correspondentes.
+* **Gestão de Presets:** Na aba **🎛️ Presets e Perfis**, é possível criar novos presets com velocidades customizadas, excluir presets existentes ou definir um deles como o padrão global a ser carregado ao iniciar o estúdio.
+
+### 3. Perfis de Interlocutores (Speaker Profiles)
+
+Ao invés de passar arquivos `.json` de mapeamento de locutores externos via CLI, salve-os localmente como perfis reutilizáveis.
+* **Mapeamento JSON:** Cada perfil contém uma estrutura de chaves e valores mapeando o locutor detectado ao seu respectivo nome (ex: `{"SPEAKER_00": "Gabriel", "SPEAKER_01": "Dra. Ana"}`).
+* **Utilização via CLI:**
+  ```bash
+  python transcribe.py inputs/reuniao.wav --speaker-profile "Entrevista Podcast"
+  ```
+* **Sobrescrita/Mesclagem:** Se você passar simultaneamente o argumento `--speaker-profile` e um arquivo `--speaker-map`, as chaves fornecidas no arquivo de mapeamento CLI explícito terão prioridade máxima e serão mescladas sobre as chaves do perfil de banco.
+* **Gestão de Perfis:** Crie e gerencie perfis na aba **🎛️ Presets e Perfis**. Os perfis salvos ficarão disponíveis para seleção instantânea tanto no console launcher wizard quanto no dropdown da aba de transcrição do Gradio.
+
+
 

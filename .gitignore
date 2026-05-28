@@ -27,3 +27,11 @@ voices/
 *.flac
 *.ogg
 *.m4a
+
+# Database ignore rules (Phase 3)
+data/*.db
+data/*.sqlite
+data/*.sqlite3
+data/*.db-shm
+data/*.db-wal
+data/backups/

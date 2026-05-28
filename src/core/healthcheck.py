@@ -86,7 +86,9 @@ def run_healthcheck() -> bool:
         espeak_path = os.getenv("PHONEMIZER_ESPEAK_PATH", "System PATH")
         print(f"[OK] eSpeak NG found and configured at: {espeak_path}")
     else:
-        print("[WARN] eSpeak NG NOT found. TTS engines (Kokoro, Piper) will fail to generate phonemes.")
+        print("[WARN] eSpeak NG executable not found in PATH.\n"
+              "       Kokoro/Piper may still work if a bundled Python/DLL loader is available.\n"
+              "       If synthesis fails with phoneme/phonemizer errors, install eSpeak NG manually.")
         
     # 6. Environment variables (protecting HF_TOKEN)
     print("--------------------------------------------------")

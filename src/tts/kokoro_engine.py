@@ -117,7 +117,8 @@ class KokoroEngine(BaseTTSEngine):
         
         try:
             # Generate audio chunks. Speed default is 1.0.
-            generator = pipeline(text, voice=self.voice_id, speed=1.0)
+            speed = float(self.extra_args.get("speed") or 1.0)
+            generator = pipeline(text, voice=self.voice_id, speed=speed)
             audio_chunks = []
             
             for _, _, audio in generator:

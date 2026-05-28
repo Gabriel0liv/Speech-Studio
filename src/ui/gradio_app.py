@@ -44,7 +44,7 @@ def check_piper_status():
 def check_espeak_status():
     if check_espeak_installed():
         return "🟢 Instalado / Configurado", "espeak-ng foi detectado no PATH ou pastas de instalacao padrao."
-    return "🔴 Nao encontrado", "O eSpeak NG e necessario para transcricao de fonemas. Instale-o via instalador Windows (.msi)."
+    return "🟡 Nao encontrado", "Kokoro/Piper podem ainda funcionar se um carregador Python/DLL embutido estiver disponivel. Se a sintese falhar, instale o eSpeak NG manualmente."
 
 def get_system_status_html():
     cuda_val, cuda_note = check_cuda_status()
@@ -215,7 +215,7 @@ def get_settings_html():
     """
     return html
 
-def transcribe_audio_ui(file_obj, model, language, device, compute_type, batch_size, diarize, num_speakers, min_speakers, max_speakers):
+def transcribe_audio_ui(file_obj, model, language, device, compute_type, batch_size, diarize, num_speakers, min_speakers, max_speakers, speaker_profile=None):
     """
     Spawns transcribe.py in a separate subprocess to transcribe the audio/video.
     This frees VRAM completely when finished, preventing OOM crashes.
@@ -238,6 +238,9 @@ def transcribe_audio_ui(file_obj, model, language, device, compute_type, batch_s
         "--batch_size", str(int(batch_size)),
         "--output_dir", TRANSCRIPTIONS_DIR
     ]
+
+    if speaker_profile and speaker_profile != "Nenhum":
+        cmd += ["--speaker-profile", speaker_profile]
 
     if language and language != "Auto":
         cmd += ["--language", language]
@@ -317,7 +320,7 @@ def transcribe_audio_ui(file_obj, model, language, device, compute_type, batch_s
 
     yield log_accumulator, output_files_info
 
-def generate_tts_ui(text, upload_file, engine, voice, format, preview, preview_chars, device):
+def generate_tts_ui(text, upload_file, engine, voice, format, preview, preview_chars, device, speed=1.0):
     """
     Invokes synthesize.py in a subprocess to run the synthesis.
     This guarantees CLI alignment and prevents memory issues.
@@ -362,7 +365,8 @@ def generate_tts_ui(text, upload_file, engine, voice, format, preview, preview_c
             "--voice", voice,
             "--output", output_file,
             "--format", format,
-            "--device", device
+            "--device", device,
+            "--speed", str(speed)
         ]
 
         # Spawn process
@@ -466,6 +470,235 @@ def on_engine_change_with_card(engine):
     card_update = update_voice_info(engine, default_val)
     return dropdown_update, card_update
 
+
+import json
+from src.core.presets import (
+    list_tts_presets, get_tts_preset, create_tts_preset, delete_tts_preset, set_default_tts_preset,
+    list_speaker_profiles, get_speaker_profile, create_speaker_profile, delete_speaker_profile
+)
+from src.core.history import list_jobs, get_job, clear_history
+
+def apply_preset_to_fields(preset_name):
+    """Query preset and return updates for all TTS UI components."""
+    if not preset_name or preset_name == "Nenhum":
+        return gr.update(), gr.update(), gr.update(), gr.update(), gr.update(), gr.update()
+        
+    p = get_tts_preset(preset_name)
+    if not p:
+        return gr.update(), gr.update(), gr.update(), gr.update(), gr.update(), gr.update()
+        
+    engine = p.get("engine", "kokoro")
+    voice = p.get("voice", "pt_br_dora")
+    fmt = p.get("output_format", "wav")
+    speed = p.get("speed", 1.0)
+    preview_chars = p.get("preview_chars", 300)
+    
+    from src.tts.registry import VOICE_MAPPING
+    choices = list(VOICE_MAPPING.get(engine, {}).keys())
+    card = update_voice_info(engine, voice)
+    
+    return (
+        gr.update(value=engine),
+        gr.update(choices=choices, value=voice),
+        gr.update(value=fmt),
+        gr.update(value=float(speed)),
+        gr.update(value=int(preview_chars)),
+        gr.update(value=card)
+    )
+
+def load_history_ui(job_type_filter):
+    """Retrieve and format job history database rows for Gradio Dataframe."""
+    api_filter = None if job_type_filter == "Todos" else job_type_filter.lower()
+    jobs = list_jobs(limit=100, job_type=api_filter)
+    
+    data = []
+    for j in jobs:
+        created_time = j["created_at"].split(".")[0].replace("T", " ")
+        data.append([
+            str(j["id"]),
+            j["job_type"].upper(),
+            j["status"].upper(),
+            created_time,
+            j["input_name"] or j["input_path"] or "(Texto)",
+            j["engine"] or j["model"] or "N/A",
+            j["voice"] or j["language"] or "N/A",
+            j["primary_output_path"] or "N/A"
+        ])
+    return data, jobs
+
+def on_history_row_select(evt: gr.SelectData, jobs_list):
+    """Load job details and output file path on table cell click."""
+    row_idx = evt.index[0]
+    if not jobs_list or row_idx >= len(jobs_list):
+        return "Nenhum detalhe encontrado.", None
+        
+    job = jobs_list[row_idx]
+    
+    md = f"""### 📋 Detalhes do Job #{job['id']} ({job['job_type'].upper()})
+- **Status:** `{job['status'].upper()}`
+- **Criado em:** `{job['created_at'].split('.')[0].replace('T', ' ')}`
+- **Concluido em:** `{job['completed_at'].split('.')[0].replace('T', ' ') if job['completed_at'] else 'N/A'}`
+- **Dispositivo:** `{job['device'].upper() if job['device'] else 'N/A'}`
+- **Duracao:** `{job['duration_seconds'] if job['duration_seconds'] is not None else 'N/A'} segundos`
+- **Caminho de Entrada:** `{job['input_path'] or 'N/A'}`
+- **Pasta de Saida:** `{job['output_dir'] or 'N/A'}`
+- **Arquivo de Saida:** `{job['primary_output_path'] or 'N/A'}`
+"""
+    if job['text_snippet']:
+        md += f"\n- **Texto/Snippet:** *{job['text_snippet']}*"
+        
+    if job['metadata_json']:
+        try:
+            meta = json.loads(job['metadata_json'])
+            if "full_text" in meta:
+                md += f"\n\n--- TEXTO COMPLETO ---\n{meta['full_text']}"
+        except Exception:
+            pass
+            
+    if job['error_message']:
+        md += f"\n\n❌ **Erro:** `{job['error_message']}`"
+        
+    audio_path = None
+    if job['job_type'] == 'tts' and job['primary_output_path'] and os.path.exists(job['primary_output_path']):
+        audio_path = job['primary_output_path']
+        
+    return md, audio_path
+
+def clear_history_ui(job_type_filter):
+    """Delete selected job history database rows."""
+    api_filter = None if job_type_filter == "Todos" else job_type_filter.lower()
+    clear_history(job_type=api_filter)
+    return load_history_ui(job_type_filter)
+
+def create_preset_ui(name, engine, voice, fmt, speed, preview, chunk, lang):
+    """Validate and create preset row, updating dropdown choices."""
+    if not name or not name.strip():
+        return "Erro: O nome do preset nao pode ser vazio.", gr.update(), gr.update()
+        
+    res = create_tts_preset(
+        name=name.strip(),
+        engine=engine,
+        voice=voice,
+        output_format=fmt,
+        speed=speed,
+        preview_chars=preview,
+        chunk_chars=chunk,
+        language=lang
+    )
+    if res is None:
+        return f"Erro: Preset '{name}' ja existe ou houve uma falha de banco.", gr.update(), gr.update()
+        
+    presets = list_tts_presets()
+    choices = [p["name"] for p in presets]
+    dropdown_up = gr.update(choices=choices, value=name)
+    main_dropdown_up = gr.update(choices=["Nenhum"] + choices, value=name)
+    return f"Preset '{name}' criado com sucesso!", dropdown_up, main_dropdown_up
+
+def delete_preset_ui(name):
+    """Delete preset by name, updating dropdown choices."""
+    if not name or name == "Nenhum":
+        return "Erro: Selecione um preset valido.", gr.update(), gr.update()
+    delete_tts_preset(name)
+    presets = list_tts_presets()
+    choices = [p["name"] for p in presets]
+    val = choices[0] if choices else None
+    dropdown_up = gr.update(choices=choices, value=val)
+    main_dropdown_up = gr.update(choices=["Nenhum"] + choices, value="Nenhum")
+    return f"Preset '{name}' excluido com sucesso.", dropdown_up, main_dropdown_up
+
+def set_default_preset_ui(name):
+    """Configure default preset choice."""
+    if not name or name == "Nenhum":
+        return "Erro: Selecione um preset valido."
+    set_default_tts_preset(name)
+    return f"Preset '{name}' definido como padrao com sucesso."
+
+def create_profile_ui(name, mapping_json_str, notes):
+    """Validate speaker profile mapping JSON and insert into SQLite DB."""
+    if not name or not name.strip():
+        return "Erro: O nome do perfil nao pode ser vazio.", gr.update(), gr.update()
+    try:
+        mapping = json.loads(mapping_json_str)
+        if not isinstance(mapping, dict):
+            return "Erro: O mapeamento de oradores deve ser um dicionario JSON.", gr.update(), gr.update()
+    except Exception as e:
+        return f"Erro: JSON de mapeamento invalido ({e})", gr.update(), gr.update()
+        
+    res = create_speaker_profile(name.strip(), mapping, notes)
+    if res is None:
+        return f"Erro: Perfil '{name}' ja existe ou houve uma falha de banco.", gr.update(), gr.update()
+        
+    profiles = list_speaker_profiles()
+    choices = [p["name"] for p in profiles]
+    dropdown_up = gr.update(choices=choices, value=name)
+    main_dropdown_up = gr.update(choices=["Nenhum"] + choices, value=name)
+    return f"Perfil '{name}' criado com sucesso!", dropdown_up, main_dropdown_up
+
+def delete_profile_ui(name):
+    """Delete speaker profile and update dropdown choices."""
+    if not name or name == "Nenhum":
+        return "Erro: Selecione um perfil valido.", gr.update(), gr.update()
+    delete_speaker_profile(name)
+    profiles = list_speaker_profiles()
+    choices = [p["name"] for p in profiles]
+    val = choices[0] if choices else None
+    dropdown_up = gr.update(choices=choices, value=val)
+    main_dropdown_up = gr.update(choices=["Nenhum"] + choices, value="Nenhum")
+    return f"Perfil '{name}' excluido com sucesso.", dropdown_up, main_dropdown_up
+
+def load_app_settings_ui():
+    from src.core.presets import get_setting
+    history_enabled = get_setting("history_enabled", "true").lower() == "true"
+    save_full_text = get_setting("save_full_text_history", "false").lower() == "true"
+    return history_enabled, save_full_text
+
+def save_app_settings(history_enabled, save_full_text):
+    from src.core.presets import set_setting
+    set_setting("history_enabled", "true" if history_enabled else "false")
+    set_setting("save_full_text_history", "true" if save_full_text else "false")
+    return "Opcoes de historico salvas com sucesso!"
+
+def on_engine_change_simple(engine):
+    from src.tts.registry import VOICE_MAPPING
+    engine = engine.lower()
+    choices = []
+    default_val = ""
+    if engine in VOICE_MAPPING:
+        choices = list(VOICE_MAPPING[engine].keys())
+        default_val = choices[0] if choices else ""
+    return gr.update(choices=choices, value=default_val)
+
+def refresh_presets_and_profiles_ui():
+    presets = list_tts_presets()
+    preset_choices = [p["name"] for p in presets]
+    preset_val = preset_choices[0] if preset_choices else None
+    
+    profiles = list_speaker_profiles()
+    profile_choices = [p["name"] for p in profiles]
+    profile_val = profile_choices[0] if profile_choices else None
+    
+    return (
+        gr.update(choices=preset_choices, value=preset_val),
+        gr.update(choices=profile_choices, value=profile_val)
+    )
+
+def refresh_stt_profiles_dropdown():
+    profiles = list_speaker_profiles()
+    choices = ["Nenhum"] + [p["name"] for p in profiles]
+    return gr.update(choices=choices)
+
+def refresh_tts_presets_dropdown():
+    presets = list_tts_presets()
+    choices = ["Nenhum"] + [p["name"] for p in presets]
+    
+    def_preset_name = "Nenhum"
+    for p in presets:
+        if p.get("is_default") == 1:
+            def_preset_name = p["name"]
+            break
+            
+    return gr.update(choices=choices, value=def_preset_name)
+
 APP_CSS = """
     .gradio-container { max-width: 1100px; margin: 0 auto; font-family: 'Outfit', sans-serif; }
     .tabs { border-radius: 8px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); }
@@ -490,7 +723,7 @@ def build_app():
 
         with gr.Tabs():
             # Tab 1: Transcription (STT)
-            with gr.TabItem("🎙️ Transcricao (STT)"):
+            with gr.TabItem("🎙️ Transcricao (STT)") as stt_tab:
                 gr.Markdown("### Transcrever arquivos de audio ou video localmente com WhisperX e Pyannote")
                 with gr.Row():
                     with gr.Column(scale=5):
@@ -525,7 +758,16 @@ def build_app():
                             )
                         
                         gr.Markdown("#### Diarizacao (Identificacao de Locutores)")
-                        diarize_checkbox = gr.Checkbox(value=True, label="Ativar Separacao de Vozes (Diarizacao)")
+                        with gr.Row():
+                            diarize_checkbox = gr.Checkbox(value=True, label="Ativar Separacao de Vozes (Diarizacao)")
+                            
+                            profiles = list_speaker_profiles()
+                            profile_choices = ["Nenhum"] + [p["name"] for p in profiles]
+                            speaker_profile_dropdown = gr.Dropdown(
+                                choices=profile_choices,
+                                value="Nenhum",
+                                label="Perfil de Oradores (Opcional)"
+                            )
                         
                         with gr.Row():
                             num_speakers_input = gr.Number(value=0, label="Speakers Exato (0 = auto)", precision=0)
@@ -544,13 +786,14 @@ def build_app():
                     inputs=[
                         file_input, model_dropdown, lang_dropdown, device_dropdown,
                         compute_type_dropdown, batch_size_slider, diarize_checkbox,
-                        num_speakers_input, min_speakers_input, max_speakers_input
+                        num_speakers_input, min_speakers_input, max_speakers_input,
+                        speaker_profile_dropdown
                     ],
                     outputs=[log_output, results_output]
                 )
 
             # Tab 2: Text to Speech (TTS)
-            with gr.TabItem("🗣️ Sintese de Voz (TTS)"):
+            with gr.TabItem("🗣️ Sintese de Voz (TTS)") as tts_tab:
                 gr.Markdown("### Gerar fala realista a partir de texto usando Kokoro ou Piper")
                 with gr.Row():
                     with gr.Column(scale=5):
@@ -561,6 +804,23 @@ def build_app():
                         )
                         file_upload = gr.File(label="Ou carregue um arquivo de texto (.txt)", file_types=[".txt"])
                         
+                        with gr.Row():
+                            presets_list = list_tts_presets()
+                            preset_choices = ["Nenhum"] + [p["name"] for p in presets_list]
+                            # Find default preset if exists
+                            def_preset_name = "Nenhum"
+                            for p in presets_list:
+                                if p.get("is_default") == 1:
+                                    def_preset_name = p["name"]
+                                    break
+                                    
+                            preset_dropdown = gr.Dropdown(
+                                choices=preset_choices,
+                                value=def_preset_name,
+                                label="Preset de Configuracao (TTS)"
+                            )
+                            apply_preset_btn = gr.Button("Aplicar Preset", variant="secondary")
+                            
                         with gr.Row():
                             engine_dropdown = gr.Dropdown(
                                 choices=["kokoro", "piper"], 
@@ -594,6 +854,10 @@ def build_app():
                                 value="cuda" if torch.cuda.is_available() else "cpu", 
                                 label="Dispositivo"
                             )
+                            speed_slider = gr.Slider(
+                                minimum=0.5, maximum=2.0, step=0.1, value=1.0, 
+                                label="Velocidade da Fala"
+                            )
                             preview_chars_slider = gr.Slider(
                                 minimum=100, maximum=1000, step=50, value=300, 
                                 label="Caracteres da Previa"
@@ -626,24 +890,113 @@ def build_app():
                     outputs=[voice_info_card]
                 )
                 
+                apply_preset_btn.click(
+                    fn=apply_preset_to_fields,
+                    inputs=[preset_dropdown],
+                    outputs=[engine_dropdown, voice_dropdown, format_dropdown, speed_slider, preview_chars_slider, voice_info_card]
+                )
+                
                 preview_btn.click(
-                    fn=lambda text, f, eng, vc, fmt, dev, chars: generate_tts_ui(
-                        text, f, eng, vc, fmt, True, chars, dev
+                    fn=lambda text, f, eng, vc, fmt, dev, chars, speed: generate_tts_ui(
+                        text, f, eng, vc, fmt, True, chars, dev, speed
                     ),
-                    inputs=[text_input, file_upload, engine_dropdown, voice_dropdown, format_dropdown, device_tts_dropdown, preview_chars_slider],
+                    inputs=[text_input, file_upload, engine_dropdown, voice_dropdown, format_dropdown, device_tts_dropdown, preview_chars_slider, speed_slider],
                     outputs=[audio_output, status_output]
                 )
                 
                 full_btn.click(
-                    fn=lambda text, f, eng, vc, fmt, dev, chars: generate_tts_ui(
-                        text, f, eng, vc, fmt, False, chars, dev
+                    fn=lambda text, f, eng, vc, fmt, dev, chars, speed: generate_tts_ui(
+                        text, f, eng, vc, fmt, False, chars, dev, speed
                     ),
-                    inputs=[text_input, file_upload, engine_dropdown, voice_dropdown, format_dropdown, device_tts_dropdown, preview_chars_slider],
+                    inputs=[text_input, file_upload, engine_dropdown, voice_dropdown, format_dropdown, device_tts_dropdown, preview_chars_slider, speed_slider],
                     outputs=[audio_output, status_output]
                 )
 
-            # Tab 3: Models / Voices Status
-            with gr.TabItem("📦 Modelos e Vozes"):
+            # Tab 3: Historico
+            with gr.TabItem("📜 Historico") as history_tab:
+                gr.Markdown("### Historico de Jobs locais (STT e TTS)")
+                with gr.Row():
+                    filter_dropdown = gr.Dropdown(
+                        choices=["Todos", "STT", "TTS"],
+                        value="Todos",
+                        label="Filtrar por Tipo"
+                    )
+                    refresh_hist_btn = gr.Button("🔄 Atualizar Historico", variant="secondary")
+                    clear_hist_btn = gr.Button("🗑️ Limpar Historico", variant="stop")
+                
+                jobs_state = gr.State([])
+                
+                history_df = gr.Dataframe(
+                    headers=["ID", "Tipo", "Status", "Data", "Entrada", "Motor/Modelo", "Voz/Idioma", "Caminho de Saida"],
+                    datatype=["str", "str", "str", "str", "str", "str", "str", "str"],
+                    interactive=False,
+                    label="Lista de Execucoes Recentes (Clique em uma linha para ver detalhes)"
+                )
+                
+                with gr.Row():
+                    with gr.Column(scale=6):
+                        job_details_md = gr.Markdown("*Selecione um job na tabela acima para ver os detalhes completos.*")
+                    with gr.Column(scale=5):
+                        hist_audio_player = gr.Audio(label="Player de Audio (Apenas para TTS)", type="filepath", interactive=False)
+
+            # Tab 4: Presets e Perfis
+            with gr.TabItem("🎛️ Presets e Perfis") as presets_tab:
+                from src.tts.registry import VOICE_MAPPING
+                preset_default_voices = list(VOICE_MAPPING.get("kokoro", {}).keys())
+                
+                with gr.Row():
+                    # Column 1: Presets TTS
+                    with gr.Column(scale=1):
+                        gr.Markdown("### 🎛️ Gestao de Presets TTS")
+                        preset_msg = gr.Markdown("")
+                        preset_list_dropdown = gr.Dropdown(
+                            choices=[p["name"] for p in list_tts_presets()],
+                            label="Presets Disponiveis",
+                            interactive=True
+                        )
+                        with gr.Row():
+                            delete_preset_btn = gr.Button("🗑️ Excluir Preset", variant="stop")
+                            set_default_preset_btn = gr.Button("⭐ Definir como Padrao", variant="primary")
+                        
+                        gr.Markdown("---")
+                        gr.Markdown("#### Criar Novo Preset TTS")
+                        new_preset_name = gr.Textbox(label="Nome do Preset", placeholder="ex: Minha Voz Kokoro")
+                        with gr.Row():
+                            new_preset_engine = gr.Dropdown(choices=["kokoro", "piper"], value="kokoro", label="Motor")
+                            new_preset_voice = gr.Dropdown(choices=preset_default_voices, value=preset_default_voices[0] if preset_default_voices else "", label="Voz/ID")
+                        with gr.Row():
+                            new_preset_format = gr.Dropdown(choices=["wav", "mp3"], value="wav", label="Formato")
+                            new_preset_speed = gr.Slider(minimum=0.5, maximum=2.0, step=0.1, value=1.0, label="Velocidade")
+                        with gr.Row():
+                            new_preset_preview = gr.Slider(minimum=100, maximum=1000, step=50, value=300, label="Caracteres Previa")
+                            new_preset_chunk = gr.Slider(minimum=100, maximum=1000, step=50, value=400, label="Tamanho Chunk")
+                        new_preset_lang = gr.Textbox(label="Idioma (Opcional)", placeholder="ex: pt-br", value="pt-br")
+                        create_preset_btn = gr.Button("💾 Salvar Preset", variant="primary")
+                        
+                    # Column 2: Speaker Profiles STT
+                    with gr.Column(scale=1):
+                        gr.Markdown("### 👤 Perfis de Oradores (Diarizacao STT)")
+                        profile_msg = gr.Markdown("")
+                        profile_list_dropdown = gr.Dropdown(
+                            choices=[p["name"] for p in list_speaker_profiles()],
+                            label="Perfis Disponiveis",
+                            interactive=True
+                        )
+                        delete_profile_btn = gr.Button("🗑️ Excluir Perfil", variant="stop")
+                        
+                        gr.Markdown("---")
+                        gr.Markdown("#### Criar Novo Perfil de Oradores")
+                        new_profile_name = gr.Textbox(label="Nome do Perfil", placeholder="ex: Reuniao Equipe")
+                        new_profile_mapping = gr.Textbox(
+                            label="Mapeamento de Speakers (JSON)", 
+                            placeholder='{\n  "SPEAKER_00": "Gabriel",\n  "SPEAKER_01": "Ana"\n}',
+                            lines=6
+                        )
+                        new_profile_notes = gr.Textbox(label="Notas / Descricao (Opcional)", placeholder="ex: Mapeamento padrao para reunioes")
+                        create_profile_btn = gr.Button("💾 Salvar Perfil", variant="primary")
+
+            # Tab 5: Models / Voices Status
+            with gr.TabItem("📦 Modelos e Vozes") as models_tab:
                 gr.Markdown("### Diagnosticos de Componentes e Status do Ambiente")
                 status_html = gr.HTML(value=get_system_status_html())
                 voices_status_html = gr.HTML(value=get_voices_status_html())
@@ -658,16 +1011,132 @@ def build_app():
                     outputs=[status_html, voices_status_html]
                 )
 
-            # Tab 4: Settings
-            with gr.TabItem("⚙️ Configuracoes"):
+            # Tab 6: Settings
+            with gr.TabItem("⚙️ Configuracoes") as settings_tab:
+                gr.Markdown("### Opcoes do Historico e Privacidade")
+                
+                with gr.Row():
+                    history_enabled_cb = gr.Checkbox(label="Ativar Historico de Execucoes", value=True)
+                    save_full_text_cb = gr.Checkbox(label="Salvar Texto Completo no Historico (STT/TTS)", value=False)
+                
+                save_settings_btn = gr.Button("💾 Salvar Opcoes de Historico", variant="primary")
+                settings_msg = gr.Markdown("")
+                
+                gr.Markdown("---")
                 gr.Markdown("### Caminhos Globais do Sistema e Variaveis")
                 settings_html = gr.HTML(value=get_settings_html())
-                refresh_settings_btn = gr.Button("Atualizar Configuracoes", variant="secondary")
+                refresh_settings_btn = gr.Button("Atualizar Caminhos", variant="secondary")
                 
                 refresh_settings_btn.click(
                     fn=get_settings_html,
                     inputs=[],
                     outputs=[settings_html]
                 )
+
+        # Tab Events Wiring
+        # STT Tab selection updates profiles dropdown
+        stt_tab.select(
+            fn=refresh_stt_profiles_dropdown,
+            inputs=[],
+            outputs=[speaker_profile_dropdown]
+        )
+        
+        # TTS Tab selection updates presets dropdown
+        tts_tab.select(
+            fn=refresh_tts_presets_dropdown,
+            inputs=[],
+            outputs=[preset_dropdown]
+        )
+        
+        # History Tab selection loads the dataframe
+        history_tab.select(
+            fn=load_history_ui,
+            inputs=[filter_dropdown],
+            outputs=[history_df, jobs_state]
+        )
+        
+        # Refresh history button
+        refresh_hist_btn.click(
+            fn=load_history_ui,
+            inputs=[filter_dropdown],
+            outputs=[history_df, jobs_state]
+        )
+        
+        # Clear history button
+        clear_hist_btn.click(
+            fn=clear_history_ui,
+            inputs=[filter_dropdown],
+            outputs=[history_df, jobs_state]
+        )
+        
+        # Click on cell in history dataframe
+        history_df.select(
+            fn=on_history_row_select,
+            inputs=[jobs_state],
+            outputs=[job_details_md, hist_audio_player]
+        )
+        
+        # Presets & Profiles Tab selection
+        presets_tab.select(
+            fn=refresh_presets_and_profiles_ui,
+            inputs=[],
+            outputs=[preset_list_dropdown, profile_list_dropdown]
+        )
+        
+        # Preset Management
+        new_preset_engine.change(
+            fn=on_engine_change_simple,
+            inputs=[new_preset_engine],
+            outputs=[new_preset_voice]
+        )
+        
+        create_preset_btn.click(
+            fn=create_preset_ui,
+            inputs=[
+                new_preset_name, new_preset_engine, new_preset_voice,
+                new_preset_format, new_preset_speed, new_preset_preview,
+                new_preset_chunk, new_preset_lang
+            ],
+            outputs=[preset_msg, preset_list_dropdown, preset_dropdown]
+        )
+        
+        delete_preset_btn.click(
+            fn=delete_preset_ui,
+            inputs=[preset_list_dropdown],
+            outputs=[preset_msg, preset_list_dropdown, preset_dropdown]
+        )
+        
+        set_default_preset_btn.click(
+            fn=set_default_preset_ui,
+            inputs=[preset_list_dropdown],
+            outputs=[preset_msg]
+        )
+        
+        # Profile Management
+        create_profile_btn.click(
+            fn=create_profile_ui,
+            inputs=[new_profile_name, new_profile_mapping, new_profile_notes],
+            outputs=[profile_msg, profile_list_dropdown, speaker_profile_dropdown]
+        )
+        
+        delete_profile_btn.click(
+            fn=delete_profile_ui,
+            inputs=[profile_list_dropdown],
+            outputs=[profile_msg, profile_list_dropdown, speaker_profile_dropdown]
+        )
+        
+        # Settings Tab selection
+        settings_tab.select(
+            fn=load_app_settings_ui,
+            inputs=[],
+            outputs=[history_enabled_cb, save_full_text_cb]
+        )
+        
+        # Save settings button
+        save_settings_btn.click(
+            fn=save_app_settings,
+            inputs=[history_enabled_cb, save_full_text_cb],
+            outputs=[settings_msg]
+        )
                 
     return app

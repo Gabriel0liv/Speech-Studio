@@ -409,14 +409,61 @@ def process_file(file_path, args, speaker_map):
         device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"[*] Dispositivo de execução: {device.upper()}")
     
+    # Initialize DB log entry
+    job_id = None
+    if not getattr(args, "no_history", False):
+        try:
+            from src.core.presets import get_setting
+            from src.core.history import create_job
+            import json
+            
+            if get_setting("history_enabled", "true").lower() == "true":
+                input_kind = "file"
+                input_path_val = os.path.abspath(file_path)
+                input_name_val = os.path.basename(file_path)
+                
+                meta = {
+                    "model": args.model,
+                    "device": device,
+                    "compute_type": args.compute_type,
+                    "no_diarization": args.no_diarization,
+                    "vad_onset": args.vad_onset,
+                    "vad_offset": args.vad_offset,
+                    "speaker_profile_used": getattr(args, "speaker_profile", None)
+                }
+                
+                if args.input_path and os.path.isdir(args.input_path):
+                    meta["source_folder"] = os.path.abspath(args.input_path)
+                    meta["recursive"] = getattr(args, "recursive", False)
+                    
+                job_id = create_job(
+                    job_type="stt",
+                    input_kind=input_kind,
+                    input_path=input_path_val,
+                    input_name=input_name_val,
+                    output_dir=os.path.abspath(args.output_dir),
+                    engine="whisperx",
+                    model=args.model,
+                    language=args.language,
+                    device=device,
+                    metadata_json=json.dumps(meta)
+                )
+        except Exception as e:
+            print(f"[WARN] Falha ao criar entrada no historico: {e}")
+
     temp_dir = "temp"
     output_dir = args.output_dir
     os.makedirs(output_dir, exist_ok=True)
+    
+    import time
+    file_start_time = time.time()
+    result_status = "failed"
     
     # Convert file to WAV
     audio_wav = convert_to_wav(file_path, temp_dir)
     if not audio_wav:
         print(f"[!] ERRO: Não foi possível obter o áudio de {file_path}. A saltar...")
+        result_status = "failed"
         return "failed"
         
     try:
@@ -462,6 +509,7 @@ def process_file(file_path, args, speaker_map):
                 print("    Verifique a sua ligação à Internet ou use --offline se o modelo já estiver no cache.", file=sys.stderr)
             else:
                 print(f"[!] ERRO ao carregar o modelo Whisper: {e}", file=sys.stderr)
+            result_status = "failed"
             return "failed"
         
         print("[*] A transcrever...")
@@ -477,6 +525,7 @@ def process_file(file_path, args, speaker_map):
         
         if not transcription.get("segments"):
             print(f"[WARN] Nenhuma fala detectada em {file_path}")
+            result_status = "no_speech"
             return "no_speech"
             
         detected_lang = transcription["language"]
@@ -638,6 +687,7 @@ def process_file(file_path, args, speaker_map):
             print(f"[+] Exportado: {out_vtt}")
             
         print(f"[OK] Ficheiro '{os.path.basename(file_path)}' concluído com sucesso!")
+        result_status = "success"
         return "success"
         
     except Exception as e:
@@ -653,9 +703,73 @@ def process_file(file_path, args, speaker_map):
             print(f"[!] ERRO CRÍTICO no processamento do ficheiro: {e}", file=sys.stderr)
             import traceback
             traceback.print_exc()
+        result_status = "failed"
         return "failed"
         
     finally:
+        # DB log updates
+        if job_id is not None:
+            try:
+                from src.core.history import update_job_success, update_job_failure, get_job
+                from src.core.presets import get_setting
+                import json
+                
+                duration = time.time() - file_start_time
+                if result_status in ("success", "no_speech"):
+                    primary_path = None
+                    text_snippet = None
+                    if result_status == "no_speech":
+                        text_snippet = "(Sem fala detectada)"
+                    else:
+                        base_out = os.path.splitext(os.path.basename(file_path))[0]
+                        file_output_dir = os.path.join(output_dir, base_out)
+                        formats = args.formats.split()
+                        if "txt" in formats:
+                            primary_path = os.path.join(file_output_dir, f"{base_out}.txt")
+                            if os.path.exists(primary_path):
+                                try:
+                                    with open(primary_path, "r", encoding="utf-8") as f:
+                                        text_snippet = f.read(300) + "..."
+                                except Exception:
+                                    pass
+                        elif "json" in formats:
+                            primary_path = os.path.join(file_output_dir, f"{base_out}.json")
+                    
+                    # Fetch existing metadata to preserve/extend it
+                    meta = {}
+                    try:
+                        job_info = get_job(job_id)
+                        if job_info and job_info.get("metadata_json"):
+                            meta = json.loads(job_info["metadata_json"])
+                    except Exception:
+                        pass
+                        
+                    # Save full text if enabled
+                    save_full = getattr(args, "save_full_text", False) or (get_setting("save_full_text_history", "false").lower() == "true")
+                    if save_full:
+                        full_text = None
+                        if primary_path and os.path.exists(primary_path):
+                            try:
+                                with open(primary_path, "r", encoding="utf-8") as f:
+                                    full_text = f.read()
+                            except Exception:
+                                pass
+                        if full_text:
+                            meta["full_text"] = full_text
+                            meta["save_full_text"] = True
+                            
+                    update_job_success(
+                        job_id,
+                        primary_output_path=os.path.abspath(primary_path) if primary_path else None,
+                        duration_seconds=duration,
+                        text_snippet=text_snippet,
+                        metadata_json=json.dumps(meta) if meta else None
+                    )
+                else:
+                    update_job_failure(job_id, "Transcricao falhou ou foi abortada.")
+            except Exception as e:
+                print(f"[WARN] Falha ao atualizar historico: {e}")
+
         # Clean up temporary audio file unless keep-wav is active
         if not args.keep_wav and audio_wav and os.path.exists(audio_wav):
             try:
@@ -913,6 +1027,9 @@ def main():
     parser.add_argument("--offline", action="store_true", help="Ativa o modo offline do Hugging Face Hub (exige modelos já em cache)")
     parser.add_argument("--cache-dir", default=None, help="Caminho do diretório de cache do Hugging Face (sobrescreve HF_HOME)")
     parser.add_argument("--interactive", "-i", action="store_true", help="Inicia o assistente de console interativo guiado")
+    parser.add_argument("--no-history", action="store_true", help="Desativa o registro da transcricao no historico local")
+    parser.add_argument("--speaker-profile", default=None, help="Nome ou ID do perfil de interlocutores salvo no banco de dados")
+    parser.add_argument("--save-full-text", action="store_true", help="Salva o texto completo no historico de transcricoes (no JSON de metadados)")
     
     args = parser.parse_args()
     
@@ -960,18 +1077,38 @@ def main():
     if not check_ffmpeg():
         sys.exit(1)
         
-    # 2. Load Speaker Map if provided
+    # Initialize database and seed defaults
+    from src.core.database import initialize_database
+    initialize_database()
+
+    # 2. Load Speaker Map / Profiles if provided
     speaker_map = {}
+    
+    # Try loading from speaker profile first
+    if getattr(args, "speaker_profile", None):
+        from src.core.presets import get_speaker_profile
+        profile = get_speaker_profile(args.speaker_profile)
+        if profile:
+            try:
+                speaker_map = json.loads(profile["mapping_json"])
+                print(f"[*] Mapeamento de speakers carregado do perfil '{profile['name']}': {speaker_map}")
+            except Exception as e:
+                print(f"[!] AVISO: Erro ao analisar mapping_json do perfil '{args.speaker_profile}' ({e}). Ignorando...")
+        else:
+            print(f"[!] AVISO: Perfil de speakers '{args.speaker_profile}' nao encontrado no banco de dados. Ignorando...")
+            
+    # Explicit CLI argument overrides profile
     if args.speaker_map:
         if os.path.exists(args.speaker_map):
             try:
                 with open(args.speaker_map, "r", encoding="utf-8") as smf:
-                    speaker_map = json.load(smf)
-                print(f"[*] Mapeamento de speakers carregado: {speaker_map}")
+                    cli_map = json.load(smf)
+                    speaker_map.update(cli_map)
+                print(f"[*] Mapeamento de speakers carregado/mesclado com CLI map: {speaker_map}")
             except Exception as e:
-                print(f"[!] AVISO: Erro ao ler mapa de speakers ({e}). Ignorando...")
+                print(f"[!] AVISO: Erro ao ler mapa de speakers do arquivo CLI ({e}). Ignorando...")
         else:
-            print(f"[!] AVISO: Arquivo de mapeamento de speakers '{args.speaker_map}' não encontrado. Ignorando...")
+            print(f"[!] AVISO: Arquivo de mapeamento de speakers CLI '{args.speaker_map}' não encontrado. Ignorando...")
             
     # 3. Determine input files
     input_path = args.input_path
