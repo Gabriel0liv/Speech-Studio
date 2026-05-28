@@ -11,7 +11,7 @@ except ImportError:
     print("    powershell -ExecutionPolicy Bypass -File ./install_tts.ps1")
     sys.exit(1)
 
-from src.core.paths import TRANSCRIPTIONS_DIR, SPEECH_DIR
+from src.core.paths import TRANSCRIPTIONS_DIR, SPEECH_DIR, TEMP_DIR
 from src.tts.registry import TTSRegistry
 
 def check_espeak_installed() -> bool:
@@ -90,6 +90,67 @@ def get_system_status_html():
                     <td style="padding: 12px 10px;">{piper_val}</td>
                     <td style="padding: 12px 10px; color: #4a5568;">{piper_note}</td>
                 </tr>
+            </tbody>
+        </table>
+    </div>
+    """
+    return html
+
+def get_voices_status_html() -> str:
+    from src.tts.registry import TTSRegistry
+    metadata = TTSRegistry.get_voices_metadata()
+    
+    html = """
+    <div style="font-family: sans-serif; padding: 10px; margin-top: 20px;">
+        <h3 style="color: #2b6cb0;">Vozes Registradas e Status de Instalacao</h3>
+        <table style="width: 100%; border-collapse: collapse; text-align: left; margin-top: 15px;">
+            <thead>
+                <tr style="border-bottom: 2px solid #cbd5e0; color: #2d3748; background-color: #f7fafc;">
+                    <th style="padding: 12px 10px; width: 20%;">Nome da Voz</th>
+                    <th style="padding: 12px 10px; width: 12%;">Motor</th>
+                    <th style="padding: 12px 10px; width: 12%;">Idioma</th>
+                    <th style="padding: 12px 10px; width: 12%;">Genero</th>
+                    <th style="padding: 12px 10px; width: 15%;">Status</th>
+                    <th style="padding: 12px 10px;">Instrucoes de Obtencao / Uso</th>
+                </tr>
+            </thead>
+            <tbody>
+    """
+    
+    for info in metadata:
+        engine = info["engine"]
+        alias = info["alias"]
+        status = TTSRegistry.get_voice_status(engine, alias)
+        
+        status_emoji = "🟢" if status["installed_locally"] else "🟡"
+        if not status["ready_to_use"]:
+            status_emoji = "🔴"
+            
+        # Determine instruction
+        if status["installed_locally"]:
+            instruction = "Pronta para uso. Selecione esta voz na aba Text-to-Speech e clique em Gerar."
+        elif status["requires_download"]:
+            if engine == "kokoro":
+                instruction = "Sera baixada automaticamente do Hugging Face no primeiro uso (requer conexao com internet)."
+            elif engine == "piper":
+                instruction = "Sera baixada automaticamente do repositorio oficial do Piper no primeiro uso (requer internet)."
+            else:
+                instruction = "Requer download. Inicie a sintese com essa voz para baixar automaticamente."
+        else:
+            instruction = f"Requer configuracao do motor '{engine}' ou espeak-ng."
+            
+        html += f"""
+                <tr style="border-bottom: 1px solid #e2e8f0;">
+                    <td style="padding: 12px 10px; font-weight: bold;">{info['name']}</td>
+                    <td style="padding: 12px 10px;">{engine.upper()}</td>
+                    <td style="padding: 12px 10px;">{info['lang']}</td>
+                    <td style="padding: 12px 10px;">{info['gender']}</td>
+                    <td style="padding: 12px 10px;">{status_emoji} {status['status_description']}</td>
+                    <td style="padding: 12px 10px; color: #4a5568; font-size: 0.9em;">{instruction}</td>
+                </tr>
+        """
+        
+    html += """
             </tbody>
         </table>
     </div>
@@ -285,55 +346,125 @@ def generate_tts_ui(text, upload_file, engine, voice, format, preview, preview_c
     suffix = "preview" if preview else "full"
     output_file = os.path.join(SPEECH_DIR, f"speech_{engine}_{suffix}_{int(time.time())}.{format}")
 
-    # Build command line
-    cmd = [
-        sys.executable, "synthesize.py",
-        "--text", input_text,
-        "--engine", engine,
-        "--voice", voice,
-        "--output", output_file,
-        "--format", format,
-        "--device", device
-    ]
-
-    # Spawn process
-    process = subprocess.Popen(
-        cmd,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        bufsize=1,
-        universal_newlines=True
-    )
+    # Write text input to a temporary .txt file to support long text safely
+    os.makedirs(TEMP_DIR, exist_ok=True)
+    temp_txt = os.path.join(TEMP_DIR, f"tts_input_{int(time.time())}_{os.getpid()}.txt")
     
-    log = f"Comando executado:\n{' '.join(cmd)}\n\n"
-    while True:
-        line = process.stdout.readline()
-        if not line and process.poll() is not None:
-            break
-        if line:
-            log += line
-            
-    rc = process.poll()
-    if rc != 0:
-        return None, f"Erro na sintese de audio (codigo {rc}):\n{log}"
-        
-    if os.path.exists(output_file):
-        return output_file, f"Audio sintetizado com sucesso!\nSalvo em: {os.path.abspath(output_file)}\n\nLog do processo:\n{log}"
-    else:
-        return None, f"Erro: O processo terminou com sucesso, mas o arquivo de audio nao foi localizado.\nLog:\n{log}"
+    try:
+        with open(temp_txt, "w", encoding="utf-8") as f:
+            f.write(input_text)
 
-def on_engine_change(engine):
+        # Build command line using --input instead of passing raw --text in command args
+        cmd = [
+            sys.executable, "synthesize.py",
+            "--input", temp_txt,
+            "--engine", engine,
+            "--voice", voice,
+            "--output", output_file,
+            "--format", format,
+            "--device", device
+        ]
+
+        # Spawn process
+        process = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,
+            universal_newlines=True
+        )
+        
+        log = f"Comando executado:\n{' '.join(cmd)}\n\n"
+        while True:
+            line = process.stdout.readline()
+            if not line and process.poll() is not None:
+                break
+            if line:
+                log += line
+                
+        rc = process.poll()
+        if rc != 0:
+            return None, f"Erro na sintese de audio (codigo {rc}):\n{log}"
+            
+        if os.path.exists(output_file):
+            return output_file, f"Audio sintetizado com sucesso!\nSalvo em: {os.path.abspath(output_file)}\n\nLog do processo:\n{log}"
+        else:
+            return None, f"Erro: O processo terminou com sucesso, mas o arquivo de audio nao foi localizado.\nLog:\n{log}"
+            
+    finally:
+        # Clean up temporary file
+        if os.path.exists(temp_txt):
+            debug_mode = os.getenv("DEBUG") in ["1", "True", "true"]
+            if not debug_mode:
+                try:
+                    os.remove(temp_txt)
+                except Exception:
+                    pass
+
+def update_voice_info(engine, voice) -> str:
     """
-    Dynamically updates the choices of the Voice dropdown based on selected Engine.
+    Returns a formatted Markdown card with the selected voice's metadata and local installation status.
+    """
+    if not voice:
+        return "Nenhuma voz selecionada."
+        
+    try:
+        engine_lower = engine.lower()
+        
+        # Piper custom ONNX files check
+        if engine_lower == "piper" and (os.path.isabs(voice) or voice.endswith(".onnx")):
+            filename = os.path.basename(voice)
+            status = TTSRegistry.get_voice_status(engine_lower, voice)
+            status_desc = "Instalado (Caminho customizado)" if status["installed_locally"] else "Nao encontrado (Caminho invalido)"
+            status_emoji = "🟢" if status["installed_locally"] else "🔴"
+            return f"""
+### 🗣️ Voz Customizada: `{filename}`
+- **Motor:** Piper (ONNX)
+- **Caminho:** `{voice}`
+- **Status:** {status_emoji} {status_desc}
+- **Nota:** Check the selected voice/model license before commercial use.
+"""
+
+        from src.tts.registry import VOICE_MAPPING
+        if engine_lower not in VOICE_MAPPING or voice not in VOICE_MAPPING[engine_lower]:
+            return f"Voz '{voice}' nao encontrada no registry. Verifique a engine selecionada ou atualize a lista de vozes."
+
+        info = VOICE_MAPPING[engine_lower][voice]
+        status = TTSRegistry.get_voice_status(engine_lower, voice)
+        
+        status_emoji = "🟢" if status["installed_locally"] else "🟡"
+        if not status["ready_to_use"] or "Falta espeak" in status["status_description"] or "nao instalado" in status["status_description"]:
+            status_emoji = "🔴"
+            
+        md = f"""
+### 🗣️ Detalhes da Voz: `{info['name']}`
+- **Motor:** {engine.upper()} | **ID Interno:** `{info['id']}`
+- **Idioma:** `{info['lang']}` | **Genero:** {info.get('gender', 'Desconhecido')}
+- **Estilo:** *{info.get('style', 'Natural')}*
+- **Status:** {status_emoji} **{status['status_description']}**
+- **Origem da Voz:** `{info.get('source', 'unknown')}`
+- **Aviso de Licenca:** {info.get('license_note', '')}
+"""
+        return md
+    except Exception as e:
+        return f"Voz '{voice}' nao encontrada no registry. Verifique a engine selecionada ou atualize a lista de vozes.\n(Erro: {e})"
+
+def on_engine_change_with_card(engine):
+    """
+    Dynamically updates choices of the Voice dropdown and the voice info card.
     """
     from src.tts.registry import VOICE_MAPPING
     engine = engine.lower()
+    choices = []
+    default_val = ""
     if engine in VOICE_MAPPING:
         choices = list(VOICE_MAPPING[engine].keys())
         default_val = choices[0] if choices else ""
-        return gr.update(choices=choices, value=default_val)
-    return gr.update(choices=[], value="")
+        
+    dropdown_update = gr.update(choices=choices, value=default_val)
+    card_update = update_voice_info(engine, default_val)
+    return dropdown_update, card_update
 
 APP_CSS = """
     .gradio-container { max-width: 1100px; margin: 0 auto; font-family: 'Outfit', sans-serif; }
@@ -447,6 +578,11 @@ def build_app():
                                 allow_custom_value=True
                             )
                         
+                        # Show voice metadata dynamically below selections
+                        voice_info_card = gr.Markdown(
+                            value=update_voice_info("kokoro", default_voices[0] if default_voices else "")
+                        )
+                        
                         with gr.Row():
                             format_dropdown = gr.Dropdown(
                                 choices=["wav", "mp3"], 
@@ -479,9 +615,15 @@ def build_app():
 
                 # Events
                 engine_dropdown.change(
-                    fn=on_engine_change,
+                    fn=on_engine_change_with_card,
                     inputs=[engine_dropdown],
-                    outputs=[voice_dropdown]
+                    outputs=[voice_dropdown, voice_info_card]
+                )
+                
+                voice_dropdown.change(
+                    fn=update_voice_info,
+                    inputs=[engine_dropdown, voice_dropdown],
+                    outputs=[voice_info_card]
                 )
                 
                 preview_btn.click(
@@ -504,12 +646,16 @@ def build_app():
             with gr.TabItem("📦 Modelos e Vozes"):
                 gr.Markdown("### Diagnosticos de Componentes e Status do Ambiente")
                 status_html = gr.HTML(value=get_system_status_html())
+                voices_status_html = gr.HTML(value=get_voices_status_html())
                 refresh_btn = gr.Button("Atualizar Status", variant="secondary")
                 
+                def refresh_all_status():
+                    return get_system_status_html(), get_voices_status_html()
+                
                 refresh_btn.click(
-                    fn=get_system_status_html,
+                    fn=refresh_all_status,
                     inputs=[],
-                    outputs=[status_html]
+                    outputs=[status_html, voices_status_html]
                 )
 
             # Tab 4: Settings

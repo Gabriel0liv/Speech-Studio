@@ -342,3 +342,76 @@ Isso iniciará um servidor web local em `http://127.0.0.1:7860`. Abra este ender
 
 This tool is intended for local speech transcription and local text-to-speech generation. Do not use it to impersonate real people, clone voices without permission, scam, defame, or mislead others. Only use voice cloning or speaker-like synthesis with your own voice or with explicit consent. For commercial use, verify the license of each model and voice.
 
+---
+
+## 🔍 Resolução de Problemas & Diagnósticos (Troubleshooting / Healthcheck)
+
+Para facilitar a identificação e resolução de problemas comuns na configuração do ambiente, o Speech Studio inclui ferramentas de diagnóstico integradas.
+
+### 1. Diagnóstico do Sistema via Linha de Comando (Healthcheck)
+
+Você pode verificar a saúde das dependências, caminhos, GPU e variáveis de ambiente executando o comando `--healthcheck` em qualquer um dos pontos de entrada:
+
+```bash
+# Executa diagnosticos pelo launcher do app
+python app.py --healthcheck
+
+# Ou pelo utilitario de sintese de voz
+python synthesize.py --healthcheck
+```
+
+Este comando verifica rapidamente:
+* Versão do Python e diretório raiz do projeto.
+* Instalação de pacotes críticos (PyTorch, WhisperX, Gradio, Kokoro, Piper).
+* Disponibilidade de GPU/CUDA.
+* Presença do executável **FFmpeg** no PATH.
+* Instalação e configuração do **eSpeak NG**.
+* Status e existência das pastas de cache e saída.
+* Segurança do token do Hugging Face (mostra se está configurado sem expor o token).
+
+> [!NOTE]
+> O comando de healthcheck roda instantaneamente sem inicializar modelos neurais pesados na GPU e sem fazer downloads de pesos.
+
+---
+
+### 2. Resolvendo Problemas com eSpeak NG no Windows
+Se o healthcheck ou a síntese (Kokoro/Piper) indicar falta do **eSpeak NG**, os modelos falharão em converter texto em fonemas.
+
+**Como Resolver:**
+1. Baixe o instalador oficial do eSpeak NG para Windows `.msi` a partir do repositório oficial [espeak-ng/espeak-ng Releases](https://github.com/espeak-ng/espeak-ng/releases) (ex: `espeak-ng-X.XX-x64.msi`).
+2. Instale-o no caminho padrão (`C:\Program Files\eSpeak NG`).
+3. O aplicativo tentará localizar o eSpeak automaticamente na pasta de instalação. Se mesmo assim não for detectado, adicione a variável de ambiente:
+   * **Nome:** `PHONEMIZER_ESPEAK_PATH`
+   * **Valor:** `C:\Program Files\eSpeak NG` (ou a pasta onde instalou)
+
+---
+
+### 3. Resolvendo Falhas de FFmpeg (Conversões de Áudio)
+O FFmpeg é necessário para segmentar arquivos de áudio longos na transcrição (STT) e para converter arquivos WAV gerados em MP3 na síntese de voz (TTS).
+
+**Como Resolver:**
+1. Baixe os binários estáticos do FFmpeg para Windows (como de [gyan.dev](https://www.gyan.dev/ffmpeg/builds/)).
+2. Extraia os arquivos para uma pasta permanente (ex: `C:\ffmpeg`).
+3. Adicione o caminho do diretório `bin` (ex: `C:\ffmpeg\bin`) à variável de ambiente `PATH` do sistema.
+4. Reinicie o terminal e valide executando `ffmpeg -version`.
+
+---
+
+### 4. Otimização de VRAM e Erros de Out-Of-Memory (OOM)
+Se você estiver utilizando uma GPU com pouca VRAM (ex: 4GB como a RTX 3050 Laptop), processar transcrições longas com diarização pode estourar a memória.
+
+**Ações Recomendadas:**
+* **Diminua o tamanho do lote (batch size):** Use `--batch_size 4` ou `--batch_size 2` na chamada do CLI `transcribe.py`.
+* **Use precisão reduzida:** O WhisperX por padrão utiliza `float16` em CUDA, o que é ótimo para economia de VRAM. Garanta que `--compute_type float16` esteja sendo usado (padrão em GPU).
+* **Forçar CPU para TTS:** Se quiser economizar VRAM durante a geração de áudio ou estiver tendo conflitos, você pode rodar a síntese em CPU selecionando "cpu" na interface ou passando `--device cpu` no `synthesize.py`. Os motores Kokoro e Piper rodam de forma muito eficiente em CPU.
+
+---
+
+### 5. Configuração Segura de Cache e Tokens
+Para rodar a diarização (pyannote), é obrigatório possuir um token do Hugging Face e aceitar os termos do modelo no site do Hugging Face.
+
+* **Onde colocar o token:** Salve-o no arquivo `.env` na raiz do projeto como `HF_TOKEN=seu_token_aqui`. Nunca comite ou envie o arquivo `.env` para o Git (ele já está no `.gitignore`).
+* **Proteção de Segredos:** O healthcheck nunca imprime ou registra o valor real do seu token, mostrando apenas `Found (Masked)`.
+* **Modo Offline:** Se precisar trabalhar totalmente offline após ter baixado os modelos uma vez, defina `HF_HUB_OFFLINE=1` e defina um caminho permanente para o cache na variável `HF_HOME` do arquivo `.env`.
+
+

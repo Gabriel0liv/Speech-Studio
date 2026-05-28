@@ -6,6 +6,13 @@ import torch
 # Ensure package root is in path
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
+# Early healthcheck exit to avoid loading heavy dependencies (like torch, registry, config)
+if "--healthcheck" in sys.argv:
+    from src.core.healthcheck import run_healthcheck
+    success = run_healthcheck()
+    sys.exit(0 if success else 1)
+
+import torch
 import src.core.config  # Configure HF environment and load .env
 
 from src.core.paths import SPEECH_DIR, TEMP_DIR
@@ -25,9 +32,16 @@ def main():
     parser.add_argument("--preview", action="store_true", help="Synthesize only a short preview of the text.")
     parser.add_argument("--preview-chars", type=int, default=300, help="Number of characters for preview (default: 300).")
     parser.add_argument("--device", type=str, help="Computation device (cpu or cuda).")
+    parser.add_argument("--healthcheck", action="store_true", help="Executa o diagnostico do sistema e encerra")
     
     args = parser.parse_args()
     
+    # 0. Run healthcheck if requested
+    if args.healthcheck:
+        from src.core.healthcheck import run_healthcheck
+        success = run_healthcheck()
+        sys.exit(0 if success else 1)
+        
     # 1. Validate inputs
     if not args.text and not args.input:
         parser.print_help()
@@ -91,6 +105,14 @@ def main():
         
     # Ensure parent dir exists
     os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
+    
+    # 2.5 Validate voice before initializing engine
+    try:
+        TTSRegistry.validate_voice(engine_name, voice)
+    except ValueError as e:
+        print(f"\n[!] Erro de validacao de voz:")
+        print(f"    {e}")
+        sys.exit(1)
     
     # 3. Create engine instance
     print(f"[*] A inicializar motor '{engine_name}' com a voz '{voice}' no dispositivo '{device.upper()}'...")
