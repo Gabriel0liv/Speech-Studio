@@ -38,12 +38,21 @@ def api_status():
 
 @app.get("/api/models")
 def get_models():
-    from src.tts.registry import TTSRegistry
+    from src.tts.registry import TTSRegistry, VOICE_MAPPING
 
     engines = []
     voices = []
-    available_engines = set(TTSRegistry.get_available_engines())
-    for engine_name in TTSRegistry.get_registered_engines():
+    try:
+        registered_engines = TTSRegistry.get_registered_engines()
+    except Exception:
+        registered_engines = list(VOICE_MAPPING.keys())
+
+    try:
+        available_engines = set(TTSRegistry.get_available_engines())
+    except Exception:
+        available_engines = set()
+
+    for engine_name in registered_engines:
         engine_available = engine_name in available_engines
         engine_status = "ready" if engine_available else "missing_dependency"
         engines.append({
@@ -53,12 +62,32 @@ def get_models():
         })
 
         seen_aliases = set()
-        for metadata in TTSRegistry.get_voices_metadata(engine_name):
-            alias = metadata["alias"]
+        for alias, info in VOICE_MAPPING.get(engine_name, {}).items():
             if alias in seen_aliases or not alias.startswith("pt_br_"):
                 continue
             seen_aliases.add(alias)
-            status_info = TTSRegistry.get_voice_status(engine_name, alias)
+            metadata = {
+                "engine": engine_name,
+                "alias": alias,
+                "id": info["id"],
+                "name": info["name"],
+                "lang": info["lang"],
+                "gender": info.get("gender", "Desconhecido"),
+                "style": info.get("style", "Padrao"),
+                "source": info.get("source", "unknown"),
+                "license_note": info.get("license_note", "Verifique os termos de licenca antes do uso comercial."),
+            }
+            try:
+                status_info = TTSRegistry.get_voice_status(engine_name, alias)
+            except Exception:
+                status_info = {
+                    "installed_locally": False,
+                    "requires_download": False,
+                    "ready_to_use": False,
+                    "available_in_registry": True,
+                    "status_description": "Status indisponivel no ambiente atual.",
+                }
+
             if status_info["ready_to_use"]:
                 voice_status = "ready" if status_info["installed_locally"] else "requires_download"
             elif status_info["available_in_registry"]:

@@ -1,6 +1,8 @@
 import os
-from typing import Dict, Type, List, Any, Tuple
-from src.tts.base import BaseTTSEngine
+from typing import TYPE_CHECKING, Any, Dict, List, Type
+
+if TYPE_CHECKING:
+    from src.tts.base import BaseTTSEngine
 
 # A list of voices we support, with metadata.
 # Especially highlighting Portuguese (pt-br) support.
@@ -221,23 +223,37 @@ VOICE_MAPPING = {
 }
 
 class TTSRegistry:
-    _engines: Dict[str, Type[BaseTTSEngine]] = {}
+    _engines: Dict[str, Type[Any]] = {}
+    _defaults_registered = False
 
     @classmethod
-    def register(cls, name: str, engine_cls: Type[BaseTTSEngine]):
+    def _ensure_default_engines_registered(cls) -> None:
+        if cls._defaults_registered:
+            return
+
+        from src.tts.kokoro_engine import KokoroEngine
+        from src.tts.piper_engine import PiperEngine
+
+        cls.register("kokoro", KokoroEngine)
+        cls.register("piper", PiperEngine)
+        cls._defaults_registered = True
+
+    @classmethod
+    def register(cls, name: str, engine_cls: Type[Any]):
         """Register a new TTS engine class."""
         cls._engines[name.lower()] = engine_cls
 
     @classmethod
-    def get_engine_class(cls, name: str) -> Type[BaseTTSEngine]:
+    def get_engine_class(cls, name: str) -> Type[Any]:
         """Get the engine class by name."""
+        cls._ensure_default_engines_registered()
         name_lower = name.lower()
         if name_lower not in cls._engines:
             raise ValueError(f"Motor TTS '{name}' nao esta registrado. Motores disponiveis: {list(cls._engines.keys())}")
         return cls._engines[name_lower]
 
     @classmethod
-    def create_engine(cls, name: str, voice_id: str, device: str = "cpu", cache_dir: str = None, **kwargs) -> BaseTTSEngine:
+    def create_engine(cls, name: str, voice_id: str, device: str = "cpu", cache_dir: str = None, **kwargs):
         """Instantiate an engine with the given config."""
         engine_cls = cls.get_engine_class(name)
         
@@ -249,11 +265,13 @@ class TTSRegistry:
     @classmethod
     def get_registered_engines(cls) -> List[str]:
         """List names of all registered engines."""
+        cls._ensure_default_engines_registered()
         return list(cls._engines.keys())
 
     @classmethod
     def get_available_engines(cls) -> List[str]:
         """List names of registered engines that are actually installed and available."""
+        cls._ensure_default_engines_registered()
         available = []
         for name, engine_cls in cls._engines.items():
             try:
@@ -455,10 +473,3 @@ class TTSRegistry:
                 f"Para o Piper, voce tambem pode passar o caminho direto para um arquivo '.onnx' local."
             )
         return True
-
-# Register default engines
-from src.tts.kokoro_engine import KokoroEngine
-from src.tts.piper_engine import PiperEngine
-
-TTSRegistry.register("kokoro", KokoroEngine)
-TTSRegistry.register("piper", PiperEngine)

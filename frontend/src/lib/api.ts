@@ -13,7 +13,7 @@ export type HealthResponse = {
   directories: Array<{ name: string; path: string; exists: boolean; status: string }>;
 };
 
-export type HistoryJob = Record<string, any> & {
+export type HistoryJob = Record<string, unknown> & {
   id: string | number;
   job_type?: string;
   type?: string;
@@ -25,9 +25,12 @@ export type HistoryJob = Record<string, any> & {
   file_url?: string | null;
 };
 
-export type Preset = Record<string, any>;
-export type SpeakerProfile = Record<string, any>;
-export type ModelVoice = Record<string, any>;
+export type Preset = Record<string, unknown>;
+export type SpeakerProfile = Record<string, unknown>;
+export type ModelVoice = Record<string, unknown>;
+export type ApiEngine = Record<string, unknown>;
+export type PtbrSuggestion = { original: string; suggested: string; note: string };
+export type PtbrAnalysis = { warnings: string[]; suggestions: PtbrSuggestion[]; has_issues: boolean };
 
 export type TtsRequest = {
   text: string;
@@ -45,7 +48,7 @@ export type TtsResponse = {
   success: boolean;
   audio_path?: string | null;
   audio_url?: string | null;
-  analysis?: any;
+  analysis?: PtbrAnalysis;
   logs?: string;
   stdout?: string;
   stderr?: string;
@@ -55,7 +58,7 @@ export type TtsResponse = {
 
 async function parseResponse<T>(response: Response): Promise<T> {
   const contentType = response.headers.get("content-type") || "";
-  const payload = contentType.includes("application/json")
+  const payload: unknown = contentType.includes("application/json")
     ? await response.json()
     : await response.text();
 
@@ -63,7 +66,9 @@ async function parseResponse<T>(response: Response): Promise<T> {
     const detail =
       typeof payload === "string"
         ? payload
-        : payload?.detail || payload?.error || "Falha ao comunicar com a API.";
+        : (payload as { detail?: string; error?: string }).detail ||
+          (payload as { detail?: string; error?: string }).error ||
+          "Falha ao comunicar com a API.";
     throw new Error(detail);
   }
 
@@ -104,11 +109,11 @@ export async function getSpeakerProfiles() {
 }
 
 export async function getModels() {
-  return getJson<{ success: boolean; engines: any[]; voices: ModelVoice[] }>("/models");
+  return getJson<{ success: boolean; engines: ApiEngine[]; voices: ModelVoice[] }>("/models");
 }
 
 export function analyzePtbrText(text: string, language = "pt-br") {
-  return postJson<{ success: boolean; analysis: any }>("/tts/analyze-text", { text, language });
+  return postJson<{ success: boolean; analysis: PtbrAnalysis }>("/tts/analyze-text", { text, language });
 }
 
 export function generateTtsPreview(payload: TtsRequest) {
@@ -120,7 +125,7 @@ export function generateTtsFull(payload: TtsRequest) {
 }
 
 export function compareVoices(payload: { text?: string; language?: string; normalize_ptbr?: boolean }) {
-  return postJson<any>("/tts/compare-voices", payload);
+  return postJson<Record<string, unknown>>("/tts/compare-voices", payload);
 }
 
 export async function transcribeFile(formData: FormData) {
@@ -128,5 +133,5 @@ export async function transcribeFile(formData: FormData) {
     method: "POST",
     body: formData,
   });
-  return parseResponse<any>(response);
+  return parseResponse<Record<string, unknown>>(response);
 }

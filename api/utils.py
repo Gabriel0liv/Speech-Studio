@@ -163,7 +163,7 @@ def relative_file_path(category: str, path: Path) -> str | None:
 
 def local_path_to_file_url(path: Path) -> str | None:
     resolved = path.resolve()
-    for category, base_dir in SAFE_FILE_CATEGORIES.items():
+    for category, base_dir in sorted(SAFE_FILE_CATEGORIES.items(), key=lambda item: len(item[1].parts), reverse=True):
         try:
             relative = resolved.relative_to(base_dir.resolve()).as_posix()
             return f"http://127.0.0.1:8000/api/files/{category}/{quote(relative)}"

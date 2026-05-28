@@ -450,5 +450,49 @@ Ao invés de passar arquivos `.json` de mapeamento de locutores externos via CLI
 * **Sobrescrita/Mesclagem:** Se você passar simultaneamente o argumento `--speaker-profile` e um arquivo `--speaker-map`, as chaves fornecidas no arquivo de mapeamento CLI explícito terão prioridade máxima e serão mescladas sobre as chaves do perfil de banco.
 * **Gestão de Perfis:** Crie e gerencie perfis na aba **🎛️ Presets e Perfis**. Os perfis salvos ficarão disponíveis para seleção instantânea tanto no console launcher wizard quanto no dropdown da aba de transcrição do Gradio.
 
+## Phase 4: Modern React Frontend + FastAPI Bridge
+
+O `app.py` com Gradio continua disponível como interface legada/local. A interface moderna agora vive no frontend React gerado pelo Lovable, vendorizado em `frontend/`, e a comunicação com o backend Python existente passa por uma bridge FastAPI em `api/`.
+
+### Como instalar as dependências da API
+
+```powershell
+pip install -r requirements-api.txt
+```
+
+### Como executar a API
+
+```powershell
+.\run_api.ps1
+```
+
+### Como executar o frontend React
+
+```powershell
+.\run_frontend.ps1
+```
+
+### Como executar ambos
+
+```powershell
+.\run_studio.ps1
+```
+
+### URLs
+
+- API: [http://127.0.0.1:8000](http://127.0.0.1:8000)
+- React Frontend: [http://127.0.0.1:8080](http://127.0.0.1:8080)
+- Gradio Legacy: [http://127.0.0.1:7860](http://127.0.0.1:7860)
+
+### Notas operacionais
+
+- O frontend Lovable permanece como fonte de verdade visual. As alterações desta fase são apenas de integração.
+- Quando a API estiver offline, as páginas conectadas usam fallback para `mockData.ts` sem quebrar a interface.
+- Áudios e transcrições gerados são servidos apenas por diretórios whitelisted:
+  - `outputs/speech`
+  - `outputs/transcriptions`
+  - `outputs/speech/voice_compare`
+- A rota de ficheiros bloqueia path traversal, `.env`, bases SQLite, caches, modelos e ficheiros arbitrários.
+- O heavy-job lock da API é local e em memória. Ele é suficiente para esta fase de uso local, mas não é uma fila persistente.
 
 

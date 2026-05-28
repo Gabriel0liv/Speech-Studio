@@ -12,7 +12,7 @@ import { Waveform } from "@/components/shared/Waveform";
 import { voices } from "@/lib/mockData";
 import { Play, Pause, Sparkles, Wand2, BarChart3, FileJson, FileText, Mic2, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
-import { analyzePtbrText, compareVoices, generateTtsFull, generateTtsPreview } from "@/lib/api";
+import { analyzePtbrText, compareVoices, generateTtsFull, generateTtsPreview, type PtbrSuggestion } from "@/lib/api";
 
 const sampleText = "Ola pessoal, hoje eu vou falar sobre inteligencia artificial local e como voce pode usar voces sinteticas em portugues brasileiro sem depender de APIs pagas. E muito mais simples do que parece, e nao precisa de conexao com a internet.";
 
@@ -50,12 +50,14 @@ export default function TextoParaVoz() {
     preset: null,
   });
 
+  const extractErrorMessage = (error: unknown) => error instanceof Error ? error.message : "API indisponível.";
+
   const handleAnalyze = async () => {
     try {
       const response = await analyzePtbrText(text);
       const nextIssues = [
         ...response.analysis.warnings,
-        ...response.analysis.suggestions.map((item: { note: string }) => item.note),
+        ...response.analysis.suggestions.map((item: PtbrSuggestion) => item.note),
       ];
       setIssues(nextIssues.length > 0 ? nextIssues : ["Nenhum ajuste PT-BR recomendado."]);
       toast.success("Texto analisado");
@@ -74,13 +76,13 @@ export default function TextoParaVoz() {
       if (response.analysis) {
         const nextIssues = [
           ...response.analysis.warnings,
-          ...response.analysis.suggestions.map((item: { note: string }) => item.note),
+          ...response.analysis.suggestions.map((item: PtbrSuggestion) => item.note),
         ];
         setIssues(nextIssues.length > 0 ? nextIssues : issues);
       }
       toast.success("Preview gerado", { description: response.audio_path || "Áudio disponível via API." });
-    } catch (error: any) {
-      toast.error("Falha ao gerar preview", { description: error?.message || "API indisponível." });
+    } catch (error: unknown) {
+      toast.error("Falha ao gerar preview", { description: extractErrorMessage(error) });
     }
   };
 
@@ -88,19 +90,19 @@ export default function TextoParaVoz() {
     try {
       const response = await generateTtsFull(buildPayload());
       toast.success("Áudio completo gerado", { description: response.audio_path || "Arquivo pronto em outputs/speech/." });
-    } catch (error: any) {
-      toast.error("Falha ao gerar áudio", { description: error?.message || "API indisponível." });
+    } catch (error: unknown) {
+      toast.error("Falha ao gerar áudio", { description: extractErrorMessage(error) });
     }
   };
 
   const handleCompare = async () => {
     try {
       const response = await compareVoices({ text, language: "pt-br", normalize_ptbr: true });
-      setCompareReportJsonUrl(response.report_json_url || null);
-      setCompareReportMdUrl(response.report_md_url || null);
-      toast.success("Comparativo PT-BR gerado", { description: response.output_dir || "Veja os relatórios da API." });
-    } catch (error: any) {
-      toast.error("Falha ao comparar vozes", { description: error?.message || "API indisponível." });
+      setCompareReportJsonUrl(typeof response.report_json_url === "string" ? response.report_json_url : null);
+      setCompareReportMdUrl(typeof response.report_md_url === "string" ? response.report_md_url : null);
+      toast.success("Comparativo PT-BR gerado", { description: typeof response.output_dir === "string" ? response.output_dir : "Veja os relatórios da API." });
+    } catch (error: unknown) {
+      toast.error("Falha ao comparar vozes", { description: extractErrorMessage(error) });
     }
   };
 
@@ -258,10 +260,10 @@ export default function TextoParaVoz() {
   );
 }
 
-function Setting({ label, children }: any) {
+function Setting({ label, children }: { label: string; children: React.ReactNode }) {
   return (<div className="space-y-1.5"><Label className="text-xs uppercase tracking-wider text-muted-foreground">{label}</Label>{children}</div>);
 }
-function Toggle({ label, desc, checked, onChange }: any) {
+function Toggle({ label, desc, checked, onChange }: { label: string; desc: string; checked?: boolean; onChange?: (checked: boolean) => void }) {
   const [v, setV] = useState(!!checked);
   return (
     <div className="flex items-center justify-between p-2.5 rounded-lg bg-secondary/40 border border-border/40">

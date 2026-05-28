@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { StatusPill } from "@/components/shared/StatusPill";
 import { Waveform } from "@/components/shared/Waveform";
-import { recentJobs } from "@/lib/mockData";
+import { recentJobs, type JobStatus } from "@/lib/mockData";
 import { Search, Play, Copy, FolderOpen, RotateCcw, Trash2, FileAudio } from "lucide-react";
 import { toast } from "sonner";
 import { getHistory, type HistoryJob } from "@/lib/api";
@@ -22,6 +22,16 @@ const normalizeType = (value?: string) => {
   const normalized = (value || "").toUpperCase();
   if (normalized === "TRANSCRIPTION") return "STT";
   return normalized || "JOB";
+};
+
+const toJobStatus = (value?: string): JobStatus => {
+  if (value === "success" || value === "warning" || value === "error" || value === "running" || value === "ready" || value === "missing") {
+    return value;
+  }
+  if (value === "failed") {
+    return "error";
+  }
+  return "warning";
 };
 
 export default function Historico() {
@@ -119,7 +129,7 @@ export default function Historico() {
                   <td className="p-3"><Badge variant="outline" className="font-mono text-[10px]">{(j.job_type || j.type || "JOB").toUpperCase()}</Badge></td>
                   <td className="p-3 font-medium truncate max-w-[260px]">{j.input_name || j.name || "Sem nome"}</td>
                   <td className="p-3 text-muted-foreground">{j.time || j.created_at || "-"}</td>
-                  <td className="p-3"><StatusPill status={(j.status as any) || "warning"} /></td>
+                  <td className="p-3"><StatusPill status={toJobStatus(j.status)} /></td>
                 </tr>
               ))}
             </tbody>
@@ -133,7 +143,7 @@ export default function Historico() {
           </div>
           <div className="flex items-center gap-2">
             <Badge variant="outline" className="font-mono text-[10px]">{selectedType || "JOB"}</Badge>
-            <StatusPill status={(selected?.status as any) || "warning"} />
+            <StatusPill status={toJobStatus(selected?.status)} />
           </div>
 
           {selectedType === "TTS" ? (
@@ -173,7 +183,7 @@ export default function Historico() {
   );
 }
 
-function Detail({ label, value, mono }: any) {
+function Detail({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
   return (
     <div>
       <p className="text-[10px] uppercase tracking-wider text-muted-foreground">{label}</p>
