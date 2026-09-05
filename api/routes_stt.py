@@ -58,6 +58,65 @@ def _stt_response(result: dict, output_dir: Path, no_diarization: bool) -> dict:
     }
 
 
+def _build_stt_command(
+    *,
+    upload_path: str | Path,
+    output_dir: str | Path,
+    model: str,
+    language: Optional[str],
+    device: str,
+    compute_type: str,
+    batch_size: int,
+    no_diarization: bool,
+    num_speakers: Optional[int],
+    min_speakers: Optional[int],
+    max_speakers: Optional[int],
+    speaker_profile: Optional[str],
+    formats: str,
+    vad_onset: float,
+    vad_offset: float,
+    chunk_size: int,
+    initial_prompt: Optional[str],
+) -> List[str]:
+    command = python_command(
+        "transcribe.py",
+        str(upload_path),
+        "--output_dir",
+        str(output_dir),
+        "--model",
+        model,
+        "--device",
+        device,
+        "--compute_type",
+        compute_type,
+        "--batch_size",
+        str(batch_size),
+        "--formats",
+        formats,
+        "--vad-onset",
+        str(vad_onset),
+        "--vad-offset",
+        str(vad_offset),
+        "--chunk-size",
+        str(chunk_size),
+    )
+    if language:
+        command.extend(["--language", language])
+    if no_diarization:
+        command.append("--no-diarization")
+    if num_speakers is not None:
+        command.extend(["--num_speakers", str(num_speakers)])
+    if min_speakers is not None:
+        command.extend(["--min_speakers", str(min_speakers)])
+    if max_speakers is not None:
+        command.extend(["--max_speakers", str(max_speakers)])
+    if speaker_profile:
+        command.extend(["--speaker-profile", speaker_profile])
+    if initial_prompt:
+        command.extend(["--initial-prompt", initial_prompt])
+    return command
+
+
 @router.post("/transcribe")
 def transcribe_file(
     file: UploadFile = File(...),
@@ -75,6 +134,7 @@ def transcribe_file(
     vad_onset: float = Form(0.500),
     vad_offset: float = Form(0.363),
     chunk_size: int = Form(30),
+    initial_prompt: Optional[str] = Form(None),
 ):
     if not acquire_heavy_job():
         raise HTTPException(status_code=409, detail=heavy_job_busy_message())
@@ -83,41 +143,25 @@ def transcribe_file(
     output_dir = make_api_output_dir("api_stt", parent="transcriptions")
 
     try:
-        command = python_command(
-            "transcribe.py",
-            str(upload_path),
-            "--output_dir",
-            str(output_dir),
-            "--model",
-            model,
-            "--device",
-            device,
-            "--compute_type",
-            compute_type,
-            "--batch_size",
-            str(batch_size),
-            "--formats",
-            formats,
-            "--vad-onset",
-            str(vad_onset),
-            "--vad-offset",
-            str(vad_offset),
-            "--chunk-size",
-            str(chunk_size),
+        command = _build_stt_command(
+            upload_path=upload_path,
+            output_dir=output_dir,
+            model=model,
+            language=language,
+            device=device,
+            compute_type=compute_type,
+            batch_size=batch_size,
+            no_diarization=no_diarization,
+            num_speakers=num_speakers,
+            min_speakers=min_speakers,
+            max_speakers=max_speakers,
+            speaker_profile=speaker_profile,
+            formats=formats,
+            vad_onset=vad_onset,
+            vad_offset=vad_offset,
+            chunk_size=chunk_size,
+            initial_prompt=initial_prompt,
         )
-        if language:
-            command.extend(["--language", language])
-        if no_diarization:
-            command.append("--no-diarization")
-        if num_speakers is not None:
-            command.extend(["--num_speakers", str(num_speakers)])
-        if min_speakers is not None:
-            command.extend(["--min_speakers", str(min_speakers)])
-        if max_speakers is not None:
-            command.extend(["--max_speakers", str(max_speakers)])
-        if speaker_profile:
-            command.extend(["--speaker-profile", speaker_profile])
-
         result = run_subprocess(command, timeout_seconds=7200)
         return _stt_response(result, output_dir, no_diarization)
     finally:
